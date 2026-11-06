@@ -17,6 +17,7 @@ export class Notifier {
   backoff = 1000;
   status = {};
   prevSnap = null;
+  synced = false;
 
   /** Aplica ajustes nuevos; si cambió la impresora, reconecta. */
   apply(settings) {
@@ -71,6 +72,7 @@ export class Notifier {
     const url = `ws://${this.settings.printerHost}:7125/websocket`;
     const ws = new WebSocket(url);
     this.ws = ws;
+    this.synced = false;
     let id = 1;
     const subscribe = () =>
       ws.send(
@@ -94,16 +96,21 @@ export class Notifier {
         return;
       }
       if (msg.result?.status) {
+        // Estado completo (respuesta a la suscripción): es el punto de partida, no un cambio.
+        // Si se avisara aquí, cada reinicio del contenedor mandaría "Empezó la impresión" de algo que ya iba.
+        this.status = {};
         this.merge(msg.result.status);
-        this.check();
+        this.prevSnap = this.snapshot();
+        this.synced = true;
       } else if (msg.method === 'notify_status_update') {
         this.merge(msg.params[0]);
-        this.check();
+        // Las actualizaciones parciales que lleguen antes del estado completo no cuentan.
+        if (this.synced) this.check();
       } else if (msg.method === 'notify_klippy_ready') {
         subscribe();
       } else if (msg.method === 'notify_klippy_shutdown' || msg.method === 'notify_klippy_disconnected') {
         this.merge({ webhooks: { state: 'shutdown' } });
-        this.check();
+        if (this.synced) this.check();
       }
     };
     ws.onclose = () => {
