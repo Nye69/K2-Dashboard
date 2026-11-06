@@ -1,0 +1,24 @@
+# dependencias y compilados
+node_modules/
+dist/
+*.tsbuildinfo
+
+# datos privados: NUNCA a git
+.env
+.env.*
+!.env.example
+.auth.env
+data/
+
+# herramientas locales y notas internas (contienen datos de la red)
+.claude/
+.superpowers/
+docs/superpowers/
+
+# sistema
+.DS_Store
+*.log
+.git/
+.github/
+docs/
+README.md

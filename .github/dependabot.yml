@@ -1,0 +1,33 @@
+version: 2
+updates:
+  # Dependencias de la app (React, Vite, three.js...)
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      # Parches y versiones menores en un solo PR para no llenar la bandeja.
+      minor-y-parches:
+        update-types: [minor, patch]
+    labels: [dependencias]
+
+  # Imágenes base del Dockerfile (node, nginx)
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [dependencias, docker]
+
+  # Acciones usadas en los workflows
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      acciones:
+        patterns: ['*']
+    labels: [dependencias, ci]

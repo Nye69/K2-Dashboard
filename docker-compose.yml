@@ -1,0 +1,16 @@
+services:
+  k2-dashboard:
+    image: ghcr.io/nye69/k2-dashboard:latest
+    # Para construir la imagen en el propio servidor en vez de bajarla: comenta "image" y descomenta "build".
+    # build: .
+    container_name: k2-dashboard
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${PORT:-8095}:80"
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      # Usuario, contraseña (cifrada) y ajustes. Haz copia de esta carpeta.
+      - ./data:/data
