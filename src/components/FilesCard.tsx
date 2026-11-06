@@ -1,7 +1,8 @@
-import { Clock, Eye, FolderOpen, Layers, LoaderCircle, Play, RefreshCw, Search, Trash2, Upload } from 'lucide-react';
+import { Check, Clock, Eye, FolderOpen, Layers, LoaderCircle, Pencil, Play, RefreshCw, Search, Trash2, Upload, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatBytes, formatDate, formatDuration } from '../lib/format';
-import { deleteFile, listFiles, startPrint, uploadFile, type GcodeFile } from '../moonraker/api';
+import { deleteFile, listFiles, renameFile, startPrint, uploadFile, type GcodeFile } from '../moonraker/api';
+import { renameTarget, splitName } from '../lib/rename';
 import { usePrinter } from '../moonraker/usePrinter';
 import { useConfirm } from './ConfirmDialog';
 import { useInView } from '../lib/useInView';
@@ -71,6 +72,20 @@ export function FilesCard({ viewerPath, onView }: { viewerPath: string | null; o
       await startPrint(f.path);
     } catch (e) {
       setActionError((e as Error).message);
+    }
+  };
+
+  /** Devuelve un mensaje de error, o null si salió bien. */
+  const doRename = async (f: GcodeFile, input: string): Promise<string | null> => {
+    const t = renameTarget(f.path, input, (files ?? []).map((x) => x.path));
+    if ('error' in t) return t.error;
+    try {
+      await renameFile(f.path, t.path);
+      if (viewerPath === f.path) onView(t.path);
+      await refresh();
+      return null;
+    } catch (e) {
+      return (e as Error).message;
     }
   };
 
@@ -171,6 +186,7 @@ export function FilesCard({ viewerPath, onView }: { viewerPath: string | null; o
               onPrint={() => doPrint(f)}
               onView={() => onView(f.path)}
               onDelete={() => doDelete(f)}
+              onRename={(name) => doRename(f, name)}
             />
           ))}
         </div>
@@ -187,14 +203,75 @@ function FileRow(p: {
   onPrint: () => void;
   onView: () => void;
   onDelete: () => void;
+  onRename: (name: string) => Promise<string | null>;
 }) {
   const [ref, visible] = useInView<HTMLDivElement>();
   const info = useFileInfo(visible ? p.file.path : null, p.file.modified);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [renameError, setRenameError] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const startEdit = () => {
+    setDraft(splitName(p.file.path).base);
+    setRenameError('');
+    setEditing(true);
+  };
+  useEffect(() => {
+    if (editing) inputRef.current?.select();
+  }, [editing]);
+
+  const save = async () => {
+    setSaving(true);
+    const err = await p.onRename(draft);
+    setSaving(false);
+    if (err) setRenameError(err);
+    else setEditing(false);
+  };
+  const cancel = () => {
+    setEditing(false);
+    setRenameError('');
+  };
   return (
     <div ref={ref} className={`file ${p.active ? 'active' : ''}`}>
       <div className="thumb">{info.thumbnail ? <img src={info.thumbnail} alt="" loading="lazy" /> : <Layers size={22} aria-hidden />}</div>
       <div className="file-main">
-        <div className="file-name" title={p.file.path}>{p.file.path}</div>
+        {editing ? (
+          <form
+            className="rename"
+            onSubmit={(e) => {
+              e.preventDefault();
+              save();
+            }}
+          >
+            <label className="sr-only" htmlFor={`rn-${p.file.path}`}>Nombre nuevo para {p.file.path}</label>
+            <input
+              id={`rn-${p.file.path}`}
+              ref={inputRef}
+              value={draft}
+              onChange={(e) => {
+                setDraft(e.target.value);
+                setRenameError('');
+              }}
+              onKeyDown={(e) => e.key === 'Escape' && cancel()}
+              disabled={saving}
+              aria-invalid={!!renameError}
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <span className="rename-ext">{splitName(p.file.path).ext}</span>
+            <button type="submit" className="icon-btn" disabled={saving} aria-label="Guardar nombre" title="Guardar">
+              {saving ? <LoaderCircle size={18} className="spin" /> : <Check size={18} />}
+            </button>
+            <button type="button" className="icon-btn" onClick={cancel} disabled={saving} aria-label="Cancelar" title="Cancelar">
+              <X size={18} />
+            </button>
+          </form>
+        ) : (
+          <div className="file-name" title={p.file.path}>{p.file.path}</div>
+        )}
+        {renameError && <div className="field-error" role="alert">{renameError}</div>}
         <div className="file-meta">
           {info.estimatedSeconds != null && <span><Clock size={12} aria-hidden />{formatDuration(info.estimatedSeconds)}</span>}
           <span>{formatBytes(p.file.size)}</span>
@@ -207,6 +284,9 @@ function FileRow(p: {
         </button>
         <button className="icon-btn" onClick={p.onView} aria-label={`Ver ${p.file.path} en 3D`} title="Ver en 3D">
           <Eye size={18} />
+        </button>
+        <button className="icon-btn" onClick={startEdit} disabled={p.isPrinting || editing} aria-label={`Cambiar el nombre de ${p.file.path}`} title={p.isPrinting ? 'No se puede renombrar mientras se imprime' : 'Cambiar nombre'}>
+          <Pencil size={18} />
         </button>
         <button className="icon-btn danger" onClick={p.onDelete} disabled={p.isPrinting} aria-label={`Borrar ${p.file.path}`} title="Borrar">
           <Trash2 size={18} />
