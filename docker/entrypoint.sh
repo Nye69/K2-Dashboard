@@ -5,9 +5,20 @@
 # - El HEALTHCHECK prueba los dos a la vez (nginx → Node).
 set -e
 
-mkdir -p /data /run/k2
+PORT="${PORT:-8095}"
+case "$PORT" in
+  ''|*[!0-9]*) echo "PORT no válido: $PORT" >&2; exit 1 ;;
+esac
+AUTH_PORT="${AUTH_PORT:-47800}"
+if [ "$AUTH_PORT" = "$PORT" ]; then AUTH_PORT=47801; fi
+export PORT AUTH_PORT
 
-# Crea /data/config.json si no existe (admin / changeme) y escribe los fragmentos de nginx.
+mkdir -p "${DATA_DIR:-/data}" /run/k2
+
+# nginx escucha en el mismo puerto que se publica (así "8095:8095" funciona sin pensar).
+sed -e "s/__PORT__/$PORT/g" -e "s/__AUTH_PORT__/$AUTH_PORT/g" /etc/k2/nginx.conf.template > /etc/nginx/conf.d/k2.conf
+
+# Crea los datos si no existen (admin / changeme), migra versiones antiguas y escribe los fragmentos de nginx.
 node /app/server/index.mjs --prepare
 
 (

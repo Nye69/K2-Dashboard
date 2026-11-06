@@ -25,7 +25,7 @@ curl -o .env https://raw.githubusercontent.com/Nye69/K2-Dashboard/main/.env.exam
 docker compose up -d
 ```
 
-1. Abre `http://IP-DEL-SERVIDOR:8095` **desde tu red local**.
+1. Abre `http://IP-DEL-SERVIDOR:8095` **desde tu red local** (por la IP o por tu dominio).
 2. Entra con **`admin` / `changeme`**. Este acceso solo funciona desde la red local y solo hasta que lo cambies.
 3. Te pedirá un **usuario y una contraseña nuevos**. Ese será el administrador.
 4. Se abren los **Ajustes** (engranaje, al lado del botón de salir). Pon la IP de la impresora y guarda.
@@ -45,7 +45,7 @@ Más detalles en [docs/instalacion.md](docs/instalacion.md).
 Nada privado va en el repositorio ni en la imagen:
 
 - `.env` (valores iniciales) está en `.gitignore`. Hay un ejemplo en [.env.example](.env.example).
-- El usuario, la contraseña (cifrada con scrypt), el secreto de las sesiones, las claves de las notificaciones y los ajustes se guardan en `./data/config.json`, en el volumen del servidor, con permisos `600`.
+- El usuario, la contraseña (cifrada con scrypt), el secreto de las sesiones, las claves de las notificaciones y los ajustes se guardan en la carpeta de datos (`DATA_PATH`, por defecto `./data`) con permisos `600`. Ver [Rutas](docs/instalacion.md#rutas).
 
 ## Licencia
 

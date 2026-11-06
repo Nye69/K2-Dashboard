@@ -6,11 +6,15 @@ services:
     container_name: k2-dashboard
     restart: unless-stopped
     init: true
+    # El contenedor escucha en PORT (por defecto 8095): mismo puerto dentro y fuera.
     ports:
-      - "${PORT:-8095}:80"
+      - "${PORT:-8095}:${PORT:-8095}"
     env_file:
       - path: .env
         required: false
+    environment:
+      PORT: ${PORT:-8095}
     volumes:
-      # Usuario, contraseña (cifrada) y ajustes. Haz copia de esta carpeta.
-      - ./data:/data
+      # Datos persistentes: usuario, ajustes, claves y dispositivos (ver docs/instalacion.md#rutas).
+      # Sin esta línea se pierden al recrear el contenedor.
+      - ${DATA_PATH:-./data}:/data

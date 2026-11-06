@@ -72,6 +72,39 @@ jobs:
             org.opencontainers.image.title=K2 Dashboard
             org.opencontainers.image.description=Panel web para impresoras Creality K2 (Klipper + Moonraker)
 
+      # Prueba real del contenedor antes de publicar: arranca, responde en su puerto y crea los datos.
+      - name: Construir para la prueba (amd64)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          tags: k2-dashboard:prueba
+          cache-from: type=gha
+
+      - name: Probar el contenedor
+        run: |
+          set -eu
+          mkdir -p "$RUNNER_TEMP/k2-data"
+          docker run -d --name k2 -p 9123:9123 -e PORT=9123 -e PRINTER_HOST=192.0.2.1 -v "$RUNNER_TEMP/k2-data:/data" k2-dashboard:prueba
+          for i in $(seq 1 30); do
+            [ "$(docker inspect -f '{{.State.Health.Status}}' k2)" = healthy ] && break
+            sleep 2
+          done
+          docker inspect -f '{{.State.Health.Status}}' k2 | grep -qx healthy
+          curl -fsS http://127.0.0.1:9123/auth/health
+          # Primer arranque: la página de login responde (desde la "red local" del runner)
+          curl -fsS -o /dev/null http://127.0.0.1:9123/login
+          # Sin sesión, la app redirige al login
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9123/)" = 302
+          # Se crearon los datos en el volumen
+          sudo ls -la "$RUNNER_TEMP/k2-data"
+          for f in users.json settings.json secrets.json devices.json storage; do sudo test -e "$RUNNER_TEMP/k2-data/$f"; done
+          sudo grep -q '"printerHost": "192.0.2.1"' "$RUNNER_TEMP/k2-data/settings.json"
+
+      - name: Registros del contenedor
+        if: always()
+        run: docker logs k2 2>&1 | tail -50 || true
+
       # En los PR solo se construye (para comprobar que funciona); no se publica.
       - name: Construir y publicar
         uses: docker/build-push-action@v7

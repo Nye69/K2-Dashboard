@@ -1,9 +1,9 @@
-import { mkdtemp, readFile, stat } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { verifyPassword } from './auth.mjs';
-import { loadConfig, nginxIncludes, publicView, saveConfig, settingsFromEnv, validateCredentials, validateSettings } from './config.mjs';
+import { loadConfig, nginxIncludes, normalizePanelUrl, publicView, saveConfig, settingsFromEnv, validateCredentials, validateSettings } from './config.mjs';
 
 describe('primer arranque', () => {
   it('crea admin/changeme, obliga a cambiarlos y toma los ajustes del entorno', async () => {
@@ -16,7 +16,13 @@ describe('primer arranque', () => {
     expect(cfg.settings).toEqual({ printerHost: '10.0.0.5', panelUrl: '', trustedProxies: ['10.0.0.1', '10.0.0.2'], pushContact: '' });
     expect(Buffer.from(cfg.push.vapid.publicKey, 'base64url')).toHaveLength(65);
     expect(cfg.push.subscriptions).toEqual([]);
-    expect((await stat(join(dir, 'config.json'))).mode & 0o777).toBe(0o600);
+    const files = (await readdir(dir)).sort();
+    expect(files).toEqual(['devices.json', 'secrets.json', 'settings.json', 'storage', 'users.json']);
+    for (const f of ['users.json', 'secrets.json', 'settings.json', 'devices.json']) expect((await stat(join(dir, f))).mode & 0o777).toBe(0o600);
+    expect(await readdir(join(dir, 'storage'))).toEqual(['LEEME.txt']);
+    const users = JSON.parse(await readFile(join(dir, 'users.json'), 'utf8'));
+    expect(users.users).toEqual([{ username: 'admin', hash: expect.stringMatching(/^scrypt\$/), role: 'admin', mustChange: true }]);
+    expect(await readFile(join(dir, 'settings.json'), 'utf8')).not.toContain('scrypt');
   });
 
   it('después manda el archivo, no el entorno', async () => {
@@ -25,7 +31,15 @@ describe('primer arranque', () => {
     cfg.settings.printerHost = '10.0.0.9';
     await saveConfig(dir, cfg);
     expect((await loadConfig(dir, { PRINTER_HOST: '10.0.0.5' })).settings.printerHost).toBe('10.0.0.9');
-    expect(JSON.parse(await readFile(join(dir, 'config.json'), 'utf8')).settings.printerHost).toBe('10.0.0.9');
+    expect(JSON.parse(await readFile(join(dir, 'settings.json'), 'utf8')).printerHost).toBe('10.0.0.9');
+  });
+});
+
+describe('normalizePanelUrl', () => {
+  it('añade https:// si falta y quita la barra final', () => {
+    expect(normalizePanelUrl('k2.ejemplo.com')).toBe('https://k2.ejemplo.com');
+    expect(normalizePanelUrl('http://192.168.1.5:8095/')).toBe('http://192.168.1.5:8095');
+    expect(normalizePanelUrl('')).toBe('');
   });
 });
 
@@ -82,15 +96,23 @@ describe('publicView', () => {
     expect(view).not.toContain('privateJwk');
   });
 
-  it('configuraciones antiguas: quita ntfy y crea las claves de push', async () => {
-    const { writeFile } = await import('node:fs/promises');
+  it('migra el config.json antiguo a los archivos nuevos (y quita ntfy)', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'k2cfg-'));
-    const old = await loadConfig(dir, {});
-    delete old.push;
-    old.settings = { ...old.settings, ntfyUrl: 'https://ntfy.sh', ntfyTopic: 'secreto' };
+    const old = {
+      version: 1,
+      auth: { user: 'pepe', hash: 'scrypt$aaa$bbb', mustChange: false, secret: 'x'.repeat(43) },
+      settings: { printerHost: '10.0.0.5', panelUrl: 'k2.ejemplo.com', trustedProxies: [], ntfyUrl: 'https://ntfy.sh', ntfyTopic: 'secreto' },
+    };
     await writeFile(join(dir, 'config.json'), JSON.stringify(old));
     const cfg = await loadConfig(dir, {});
-    expect(cfg.settings).not.toHaveProperty('ntfyTopic');
+    expect(cfg.auth).toEqual(old.auth);
+    expect(cfg.settings).toEqual({ printerHost: '10.0.0.5', panelUrl: 'https://k2.ejemplo.com', trustedProxies: [], pushContact: '' });
     expect(cfg.push.vapid.publicKey).toBeTruthy();
+    const files = await readdir(dir);
+    expect(files).toContain('config.json.migrado');
+    expect(files).not.toContain('config.json');
+    // y al volver a cargar sale lo mismo
+    expect((await loadConfig(dir, {})).auth.user).toBe('pepe');
   });
+
 });

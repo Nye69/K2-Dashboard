@@ -1,7 +1,7 @@
 # Cómo está hecho
 
 ```
-Navegador ──► (proxy inverso con HTTPS, opcional) ──► contenedor k2-dashboard :80
+Navegador ──► (proxy inverso con HTTPS, opcional) ──► contenedor k2-dashboard :PORT (8095)
                                                        │
                                                        ├─ nginx
                                                        │    ├─ /                 app React (archivos estáticos)
@@ -9,7 +9,7 @@ Navegador ──► (proxy inverso con HTTPS, opcional) ──► contenedor k2-
                                                        │    ├─ /k2ws             ──► websocket de Creality  impresora:9999
                                                        │    └─ auth_request      ──► Node /auth/check (¿sesión válida?)
                                                        │
-                                                       └─ Node (127.0.0.1:8080)
+                                                       └─ Node (127.0.0.1:AUTH_PORT, 47800)
                                                             ├─ /login, /setup, /auth/*   inicio de sesión y primer arranque
                                                             ├─ /auth/api/*               ajustes y cuenta (para la app)
                                                             └─ avisos ──► Moonraker (websocket) y ──► Web Push (Apple, Google, Mozilla…)
@@ -35,7 +35,7 @@ Los valores se validan antes de escribirlos (solo IP, nombres de host y rangos C
 
 ## Inicio de sesión
 
-- Al primer arranque se crea `data/config.json` con `admin` / `changeme` (contraseña con scrypt) y `mustChange: true`.
+- Al primer arranque se crea `data/users.json` con `admin` / `changeme` (contraseña con scrypt) y `mustChange: true`.
 - Mientras `mustChange` sea true:
   - solo se puede entrar desde la red local;
   - `/auth/check` responde 401 para todo, así que la app no carga;

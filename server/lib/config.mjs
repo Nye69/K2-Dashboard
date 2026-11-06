@@ -1,4 +1,11 @@
-// Configuración del dashboard: se guarda en DATA_DIR/config.json.
+// Datos del dashboard, en DATA_DIR (en Docker: /data, montado desde DATA_PATH del servidor).
+//
+//   users.json     cuentas (usuario, contraseña cifrada con scrypt, rol)
+//   settings.json  ajustes (impresora, dominio, proxies, correo de contacto)
+//   secrets.json   secreto de las sesiones y claves VAPID de las notificaciones
+//   devices.json   dispositivos con notificaciones push
+//   storage/       para funciones futuras (archivos del usuario, copias...)
+//
 // Las variables de entorno (.env) solo dan los valores del primer arranque; después manda lo que se cambie en Ajustes.
 import { randomBytes } from 'node:crypto';
 import { promises as fsp } from 'node:fs';
@@ -13,10 +20,18 @@ export const DEFAULT_PASSWORD = 'changeme';
 export const SETTING_KEYS = ['printerHost', 'panelUrl', 'trustedProxies', 'pushContact'];
 
 /** Ajustes iniciales a partir del entorno. */
+/** "k2.midominio.com" → "https://k2.midominio.com" (sin barra final). */
+export function normalizePanelUrl(value) {
+  const v = String(value ?? '').trim().replace(/\/+$/, '');
+  if (!v) return '';
+  // Solo si no trae ningún esquema: "ftp://x" se deja tal cual para que la validación lo rechace.
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(v) ? v : `https://${v}`;
+}
+
 export function settingsFromEnv(env = process.env) {
   return {
     printerHost: (env.PRINTER_HOST ?? '').trim(),
-    panelUrl: (env.PANEL_URL ?? '').trim(),
+    panelUrl: normalizePanelUrl(env.PANEL_URL),
     trustedProxies: parseList(env.TRUSTED_PROXIES),
     pushContact: (env.PUSH_CONTACT_EMAIL ?? '').trim(),
   };
@@ -39,7 +54,7 @@ export function validateSettings(input) {
   const errors = {};
   const s = {
     printerHost: String(input?.printerHost ?? '').trim(),
-    panelUrl: String(input?.panelUrl ?? '').trim().replace(/\/+$/, ''),
+    panelUrl: normalizePanelUrl(input?.panelUrl),
     trustedProxies: parseList(input?.trustedProxies),
     pushContact: String(input?.pushContact ?? '').trim().replace(/^mailto:/i, ''),
   };
@@ -66,7 +81,7 @@ export function validateCredentials(user, password, confirm) {
 /** Configuración nueva: admin / changeme, que obliga a cambiarlos en el primer inicio de sesión. */
 export async function freshConfig(env = process.env) {
   return {
-    version: 1,
+    version: 2,
     auth: {
       user: DEFAULT_USER,
       hash: await hashPassword(DEFAULT_PASSWORD),
@@ -78,35 +93,94 @@ export async function freshConfig(env = process.env) {
   };
 }
 
-export const configPath = (dataDir) => join(dataDir, 'config.json');
+export const FILES = {
+  users: 'users.json',
+  settings: 'settings.json',
+  secrets: 'secrets.json',
+  devices: 'devices.json',
+};
+export const STORAGE_DIR = 'storage';
+const LEGACY = 'config.json';
 
-export async function loadConfig(dataDir, env = process.env) {
+export const dataFile = (dataDir, name) => join(dataDir, FILES[name]);
+/** Archivo que se vigila para recargar si alguien lo cambia desde fuera (p. ej. --reset-login). */
+export const configPath = (dataDir) => dataFile(dataDir, 'users');
+
+async function readJson(file) {
   try {
-    const cfg = JSON.parse(await fsp.readFile(configPath(dataDir), 'utf8'));
-    // Ajustes que falten (versiones antiguas) toman su valor por defecto; los que ya no existen se quitan.
-    const merged = { ...settingsFromEnv({}), ...cfg.settings };
-    cfg.settings = Object.fromEntries(SETTING_KEYS.map((k) => [k, merged[k]]));
-    if (!cfg.push?.vapid) {
-      cfg.push = { vapid: generateVapidKeys(), subscriptions: [] };
-      await saveConfig(dataDir, cfg);
-    }
-    cfg.push.subscriptions ??= [];
-    return cfg;
+    return JSON.parse(await fsp.readFile(file, 'utf8'));
   } catch (e) {
-    if (e.code !== 'ENOENT') throw e;
-    const cfg = await freshConfig(env);
-    await saveConfig(dataDir, cfg);
-    return cfg;
+    if (e.code === 'ENOENT') return undefined;
+    throw new Error(`No se pudo leer ${file}: ${e.message}`);
   }
 }
 
-/** Escritura atómica (archivo temporal + rename), legible solo por el dueño: contiene el hash y el secreto. */
-export async function saveConfig(dataDir, cfg) {
-  const file = configPath(dataDir);
+/** Escritura atómica (temporal + rename), legible solo por el dueño. */
+async function writeJson(file, data) {
   await fsp.mkdir(dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
-  await fsp.writeFile(tmp, JSON.stringify(cfg, null, 2) + '\n', { mode: 0o600 });
+  await fsp.writeFile(tmp, JSON.stringify(data, null, 2) + '\n', { mode: 0o600 });
   await fsp.rename(tmp, file);
+}
+
+const STORAGE_README = `Carpeta reservada para funciones futuras del K2 Dashboard (archivos del usuario, copias de seguridad...).
+Se conserva entre actualizaciones porque está dentro del volumen de datos.
+`;
+
+/** Pasa la configuración en memoria a los archivos separados. */
+function toFiles(cfg) {
+  return {
+    users: { version: 1, users: [{ username: cfg.auth.user, hash: cfg.auth.hash, role: 'admin', mustChange: !!cfg.auth.mustChange }] },
+    settings: { version: 1, ...cfg.settings },
+    secrets: { version: 1, sessionSecret: cfg.auth.secret, vapid: cfg.push.vapid },
+    devices: { version: 1, push: cfg.push.subscriptions ?? [] },
+  };
+}
+
+function cleanSettings(raw) {
+  const merged = { ...settingsFromEnv({}), ...raw };
+  const out = Object.fromEntries(SETTING_KEYS.map((k) => [k, merged[k]]));
+  out.panelUrl = normalizePanelUrl(out.panelUrl);
+  return out;
+}
+
+/**
+ * Carga los datos. Si no hay nada, crea admin / changeme con los ajustes del entorno.
+ * Si encuentra el config.json de versiones anteriores, lo reparte en los archivos nuevos y lo renombra.
+ */
+export async function loadConfig(dataDir, env = process.env) {
+  await fsp.mkdir(join(dataDir, STORAGE_DIR), { recursive: true });
+  const readme = join(dataDir, STORAGE_DIR, 'LEEME.txt');
+  await fsp.writeFile(readme, STORAGE_README, { flag: 'wx' }).catch(() => {});
+
+  const [users, settings, secrets, devices] = await Promise.all(Object.keys(FILES).map((k) => readJson(dataFile(dataDir, k))));
+
+  if (!users) {
+    const legacy = await readJson(join(dataDir, LEGACY));
+    const cfg = legacy?.auth ? { ...legacy, settings: cleanSettings(legacy.settings) } : await freshConfig(env);
+    cfg.push = cfg.push?.vapid ? { vapid: cfg.push.vapid, subscriptions: cfg.push.subscriptions ?? [] } : { vapid: generateVapidKeys(), subscriptions: [] };
+    await saveConfig(dataDir, cfg);
+    if (legacy) await fsp.rename(join(dataDir, LEGACY), join(dataDir, `${LEGACY}.migrado`)).catch(() => {});
+    return cfg;
+  }
+
+  const admin = users.users?.find((u) => u.role === 'admin') ?? users.users?.[0];
+  if (!admin) throw new Error(`${FILES.users} no tiene ningún usuario. Usa --reset-login.`);
+  const cfg = {
+    version: 2,
+    auth: { user: admin.username, hash: admin.hash, mustChange: !!admin.mustChange, secret: secrets?.sessionSecret ?? randomBytes(32).toString('base64url') },
+    settings: cleanSettings(settings ?? settingsFromEnv(env)),
+    push: { vapid: secrets?.vapid ?? generateVapidKeys(), subscriptions: devices?.push ?? [] },
+  };
+  // Si faltaba algún archivo (borrado a mano, versión intermedia), se vuelve a escribir.
+  if (!settings || !secrets?.sessionSecret || !secrets?.vapid || !devices) await saveConfig(dataDir, cfg);
+  return cfg;
+}
+
+export async function saveConfig(dataDir, cfg) {
+  const files = toFiles(cfg);
+  // users.json el último: es el que se vigila para recargar.
+  for (const name of ['settings', 'secrets', 'devices', 'users']) await writeJson(dataFile(dataDir, name), files[name]);
 }
 
 /** Lo que se puede enseñar a la app (nunca el hash, el secreto ni la clave privada). */

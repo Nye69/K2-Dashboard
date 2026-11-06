@@ -11,7 +11,7 @@ import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { hashPassword, makeLimiter, readCookie, signSession, verifyPassword, verifySession } from './lib/auth.mjs';
 import { configPath, DEFAULT_PASSWORD, DEFAULT_USER, loadConfig, nginxIncludes, publicView, pushView, saveConfig, validateCredentials, validateSettings } from './lib/config.mjs';
-import { isLanRequest, normalizeIp } from './lib/net.mjs';
+import { isLanRequest, normalizeIp, originIp } from './lib/net.mjs';
 import { isValidSubscription, sendPush, vapidSubject } from './lib/webpush.mjs';
 import { Notifier } from './notifier.mjs';
 import { loginPage, setupPage } from './pages.mjs';
@@ -103,7 +103,7 @@ const notifier = new Notifier((ev) => {
 notifier.apply(cfg.settings);
 await writeIncludes(cfg.settings);
 
-// Si alguien cambia config.json desde fuera (p. ej. --reset-login), se vuelve a leer.
+// Si alguien cambia users.json desde fuera (p. ej. --reset-login), se vuelve a leer.
 watchFile(configPath(DATA_DIR), { interval: 2000 }, async () => {
   try {
     const next = await loadConfig(DATA_DIR);
@@ -126,11 +126,16 @@ try {
 
 const limiter = makeLimiter(10, 15 * 60_000);
 
-const clientInfo = (req) => ({
-  clientIp: normalizeIp(String(req.headers['x-client-ip'] ?? req.socket.remoteAddress ?? '')),
-  peerIp: normalizeIp(String(req.headers['x-peer-ip'] ?? req.headers['x-client-ip'] ?? req.socket.remoteAddress ?? '')),
-  forwarded: String(req.headers['x-had-forward'] ?? '').trim(),
-});
+const clientInfo = (req) => {
+  const info = {
+    clientIp: normalizeIp(String(req.headers['x-client-ip'] ?? req.socket.remoteAddress ?? '')),
+    peerIp: normalizeIp(String(req.headers['x-peer-ip'] ?? req.headers['x-client-ip'] ?? req.socket.remoteAddress ?? '')),
+    forwardedFor: String(req.headers['x-fwd-for'] ?? ''),
+    realIp: String(req.headers['x-fwd-real-ip'] ?? ''),
+  };
+  // IP real del visitante (también para el límite de intentos de inicio de sesión).
+  return { ...info, clientIp: info.clientIp, origin: originIp(info) };
+};
 const isLan = (req) => isLanRequest(clientInfo(req));
 const isHttps = (req) => req.headers['x-forwarded-proto'] === 'https';
 
@@ -197,7 +202,7 @@ async function handle(req, res) {
 
   if (path === '/auth/login' && method === 'POST') {
     if (!sameOrigin(req)) return res.writeHead(403).end();
-    const { clientIp } = clientInfo(req);
+    const { origin: clientIp } = clientInfo(req);
     const now = Date.now();
     if (cfg.auth.mustChange && !isLan(req)) return html(res, 403, loginPage({ error: LAN_ONLY, iconDataUri }));
     if (limiter.blocked(clientIp, now)) return html(res, 429, loginPage({ error: 'Demasiados intentos. Espera 15 minutos.', iconDataUri }));
