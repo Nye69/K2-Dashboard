@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatBytes, formatDate, formatDuration } from '../lib/format';
 import { deleteFile, listFiles, renameFile, startPrint, uploadFile, type GcodeFile } from '../moonraker/api';
 import { renameTarget, splitName } from '../lib/rename';
+import { labelCuraObjects } from '../lib/labelObjects';
 import { usePrinter } from '../moonraker/usePrinter';
 import { useConfirm } from './ConfirmDialog';
 import { useInView } from '../lib/useInView';
@@ -14,6 +15,21 @@ interface UploadState {
   error?: string;
 }
 
+/** Hasta este tamaño se revisa el G-code para poder cancelar piezas por separado (más grande, se sube tal cual). */
+const LABEL_MAX_BYTES = 200 * 1024 * 1024;
+
+/** Si es un G-code de Cura con varias piezas, le añade las etiquetas de Klipper. */
+async function prepareUpload(file: File): Promise<{ file: File; objects: number }> {
+  if (file.size > LABEL_MAX_BYTES) return { file, objects: 0 };
+  try {
+    const r = labelCuraObjects(await file.text());
+    if (!r) return { file, objects: 0 };
+    return { file: new File([r.text], file.name, { type: file.type || 'text/plain', lastModified: file.lastModified }), objects: r.objects.length };
+  } catch {
+    return { file, objects: 0 };
+  }
+}
+
 export function FilesCard({ viewerPath, onView }: { viewerPath: string | null; onView: (p: string) => void }) {
   const { conn, status, client } = usePrinter();
   const confirm = useConfirm();
@@ -23,6 +39,7 @@ export function FilesCard({ viewerPath, onView }: { viewerPath: string | null; o
   const [uploads, setUploads] = useState<UploadState[]>([]);
   const [over, setOver] = useState(false);
   const [actionError, setActionError] = useState('');
+  const [notice, setNotice] = useState('');
   const input = useRef<HTMLInputElement>(null);
 
   const state: string = status.print_stats?.state ?? 'standby';
@@ -55,8 +72,10 @@ export function FilesCard({ viewerPath, onView }: { viewerPath: string | null; o
       }
       setUploads((u) => [...u.filter((x) => x.name !== file.name), { name: file.name, progress: 0 }]);
       try {
-        await uploadFile(file, (p) => setUploads((u) => u.map((x) => (x.name === file.name ? { ...x, progress: p } : x))));
+        const prepared = await prepareUpload(file);
+        await uploadFile(prepared.file, (p) => setUploads((u) => u.map((x) => (x.name === file.name ? { ...x, progress: p } : x))));
         setUploads((u) => u.filter((x) => x.name !== file.name));
+        if (prepared.objects > 1) setNotice(`${file.name}: ${prepared.objects} piezas. Mientras se imprime podrás cancelar cualquiera sin parar las demás.`);
         refresh();
       } catch (e) {
         setUploads((u) => u.map((x) => (x.name === file.name ? { ...x, error: (e as Error).message } : x)));
@@ -167,6 +186,12 @@ export function FilesCard({ viewerPath, onView }: { viewerPath: string | null; o
         </div>
       ))}
 
+      {notice && (
+        <div className="alert ok" role="status" style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ flex: 1 }}>{notice}</span>
+          <button className="icon-btn" onClick={() => setNotice('')} aria-label="Cerrar aviso" title="Cerrar"><X size={16} /></button>
+        </div>
+      )}
       {actionError && <div className="alert error" style={{ marginBottom: 12 }} role="alert">{actionError}</div>}
       {loadError && <div className="alert error" style={{ marginBottom: 12 }} role="alert">No se pudo cargar la lista: {loadError}</div>}
 
