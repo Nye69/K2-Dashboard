@@ -6,7 +6,7 @@ Va en **un solo contenedor Docker**: nginx sirve la app y hace de proxy hacia la
 
 ## Qué hace
 
-- **Impresión en curso**: progreso, capa, tiempo restante (el mismo que calcula la impresora), pausar, reanudar, cancelar y cancelar una sola pieza.
+- **Impresión en curso**: progreso, capa, tiempo restante (el mismo que calcula la impresora), pausar, reanudar, cancelar y **cancelar una sola pieza** (también con archivos de Cura: el panel los prepara al subirlos).
 - **Archivos**: subir G-code (también arrastrando), miniaturas, imprimir, borrar y buscar.
 - **Vista 3D del G-code**, con la capa que se está imprimiendo.
 - **Temperaturas** con gráfica, y precalentado para PLA, PETG, ABS y TPU.

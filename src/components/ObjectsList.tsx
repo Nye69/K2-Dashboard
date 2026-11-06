@@ -20,7 +20,7 @@ export function ObjectsList() {
   const cancel = async (name: string) => {
     const ok = await confirm({
       title: '¿Cancelar esta pieza?',
-      message: `"${name}" se dejará de imprimir. Las demás piezas siguen.`,
+      message: `"${name.replace(/_/g, ' ')}" se dejará de imprimir. Las demás piezas siguen.`,
       confirmLabel: 'Cancelar pieza',
       danger: true,
     });
@@ -40,7 +40,7 @@ export function ObjectsList() {
         const isExcluded = excluded.includes(o.name);
         return (
           <div key={o.name} className={`object ${isExcluded ? 'excluded' : ''} ${o.name === current ? 'current' : ''}`}>
-            <span className="name">{o.name}{o.name === current ? ' · imprimiendo' : ''}{isExcluded ? ' · cancelada' : ''}</span>
+            <span className="name" title={o.name}>{o.name.replace(/_/g, ' ')}{o.name === current ? ' · imprimiendo' : ''}{isExcluded ? ' · cancelada' : ''}</span>
             <button
               className="icon-btn danger"
               disabled={isExcluded || conn !== 'open' || remaining <= 1}

@@ -69,3 +69,13 @@ docker exec k2-dashboard node /app/server/index.mjs --reset-login
 ```
 
 Vuelve a `admin` / `changeme` (solo desde la red local) y conserva los ajustes. Entra desde casa y crea el usuario de nuevo.
+
+## Cancelar una sola pieza
+
+Si imprimes varias piezas a la vez y una sale mal, en la tarjeta de impresión aparece la lista **Piezas** con un botón para cancelar cada una. Las demás siguen imprimiéndose. Usa `EXCLUDE_OBJECT` de Klipper.
+
+- **Creality Print / OrcaSlicer / PrusaSlicer**: ya marcan las piezas en el G-code. Funciona sin hacer nada.
+- **Cura**: no las marca, solo deja comentarios `;MESH:nombre.stl`. Al **subir el archivo desde el panel**, se convierten en las órdenes de Klipper (`EXCLUDE_OBJECT_DEFINE`, `_START` y `_END`) y se avisa de cuántas piezas tiene. El resto del archivo no cambia.
+- Los archivos de Cura subidos por otra vía (desde la propia Cura, una USB…) o antes de esta función no tienen las marcas. Vuelve a subirlos desde el panel.
+- Con una sola pieza no aparece la lista: para eso está **Parar**.
+
