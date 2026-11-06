@@ -12,8 +12,7 @@ RUN apk add --no-cache nodejs tzdata \
  && rm -f /etc/nginx/conf.d/default.conf
 COPY docker/nginx.conf /etc/nginx/conf.d/k2.conf
 COPY --chmod=755 docker/entrypoint.sh /entrypoint.sh
-COPY server/index.mjs server/notifier.mjs server/pages.mjs /app/server/
-COPY server/lib/auth.mjs server/lib/config.mjs server/lib/events.mjs server/lib/net.mjs /app/server/lib/
+COPY server /app/server
 COPY --from=build /app/dist /usr/share/nginx/html
 
 ENV DATA_DIR=/data

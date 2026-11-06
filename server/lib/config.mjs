@@ -5,11 +5,12 @@ import { promises as fsp } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { hashPassword } from './auth.mjs';
 import { isHost, isIpOrCidr, parseList } from './net.mjs';
+import { generateVapidKeys, isEmail } from './webpush.mjs';
 
 export const DEFAULT_USER = 'admin';
 export const DEFAULT_PASSWORD = 'changeme';
 
-export const SETTING_KEYS = ['printerHost', 'panelUrl', 'trustedProxies', 'ntfyUrl', 'ntfyTopic'];
+export const SETTING_KEYS = ['printerHost', 'panelUrl', 'trustedProxies', 'pushContact'];
 
 /** Ajustes iniciales a partir del entorno. */
 export function settingsFromEnv(env = process.env) {
@@ -17,8 +18,7 @@ export function settingsFromEnv(env = process.env) {
     printerHost: (env.PRINTER_HOST ?? '').trim(),
     panelUrl: (env.PANEL_URL ?? '').trim(),
     trustedProxies: parseList(env.TRUSTED_PROXIES),
-    ntfyUrl: (env.NTFY_URL ?? 'https://ntfy.sh').trim(),
-    ntfyTopic: (env.NTFY_TOPIC ?? '').trim(),
+    pushContact: (env.PUSH_CONTACT_EMAIL ?? '').trim(),
   };
 }
 
@@ -41,15 +41,13 @@ export function validateSettings(input) {
     printerHost: String(input?.printerHost ?? '').trim(),
     panelUrl: String(input?.panelUrl ?? '').trim().replace(/\/+$/, ''),
     trustedProxies: parseList(input?.trustedProxies),
-    ntfyUrl: String(input?.ntfyUrl ?? '').trim().replace(/\/+$/, '') || 'https://ntfy.sh',
-    ntfyTopic: String(input?.ntfyTopic ?? '').trim(),
+    pushContact: String(input?.pushContact ?? '').trim().replace(/^mailto:/i, ''),
   };
   if (s.printerHost && !isHost(s.printerHost)) errors.printerHost = 'Pon solo la IP o el nombre, sin http:// ni puerto (por ejemplo 192.168.1.50).';
   if (s.panelUrl && !isHttpUrl(s.panelUrl)) errors.panelUrl = 'Tiene que empezar por https:// (por ejemplo https://impresora.midominio.com).';
   const bad = s.trustedProxies.filter((p) => !isIpOrCidr(p));
   if (bad.length) errors.trustedProxies = `No son IP ni rangos válidos: ${bad.join(', ')}`;
-  if (!isHttpUrl(s.ntfyUrl)) errors.ntfyUrl = 'Tiene que ser una URL (por defecto https://ntfy.sh).';
-  if (s.ntfyTopic && !/^[A-Za-z0-9_-]{1,64}$/.test(s.ntfyTopic)) errors.ntfyTopic = 'Solo letras, números, guiones y guiones bajos (máximo 64).';
+  if (s.pushContact && !isEmail(s.pushContact)) errors.pushContact = 'Pon un correo válido (por ejemplo tu@correo.com).';
   return Object.keys(errors).length ? { errors } : { settings: s };
 }
 
@@ -76,6 +74,7 @@ export async function freshConfig(env = process.env) {
       secret: randomBytes(32).toString('base64url'),
     },
     settings: settingsFromEnv(env),
+    push: { vapid: generateVapidKeys(), subscriptions: [] },
   };
 }
 
@@ -84,8 +83,14 @@ export const configPath = (dataDir) => join(dataDir, 'config.json');
 export async function loadConfig(dataDir, env = process.env) {
   try {
     const cfg = JSON.parse(await fsp.readFile(configPath(dataDir), 'utf8'));
-    // Ajustes que falten (versiones antiguas) toman su valor por defecto.
-    cfg.settings = { ...settingsFromEnv({}), ...cfg.settings };
+    // Ajustes que falten (versiones antiguas) toman su valor por defecto; los que ya no existen se quitan.
+    const merged = { ...settingsFromEnv({}), ...cfg.settings };
+    cfg.settings = Object.fromEntries(SETTING_KEYS.map((k) => [k, merged[k]]));
+    if (!cfg.push?.vapid) {
+      cfg.push = { vapid: generateVapidKeys(), subscriptions: [] };
+      await saveConfig(dataDir, cfg);
+    }
+    cfg.push.subscriptions ??= [];
     return cfg;
   } catch (e) {
     if (e.code !== 'ENOENT') throw e;
@@ -104,9 +109,18 @@ export async function saveConfig(dataDir, cfg) {
   await fsp.rename(tmp, file);
 }
 
-/** Lo que se puede enseñar a la app (nunca el hash ni el secreto). */
+/** Lo que se puede enseñar a la app (nunca el hash, el secreto ni la clave privada). */
 export function publicView(cfg) {
   return { user: cfg.auth.user, settings: cfg.settings };
+}
+
+/** Dispositivos suscritos, sin las claves. */
+export function pushView(cfg) {
+  return {
+    publicKey: cfg.push.vapid.publicKey,
+    contactSet: !!cfg.settings.pushContact,
+    devices: cfg.push.subscriptions.map((s) => ({ id: s.id, label: s.label, createdAt: s.createdAt, endpoint: s.endpoint })),
+  };
 }
 
 /**

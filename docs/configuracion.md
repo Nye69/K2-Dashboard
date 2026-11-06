@@ -28,14 +28,24 @@ Se considera **red local**: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `12
 3. No pongas una Access List: el dashboard ya tiene su propio inicio de sesión. El Basic Auth de NPM no funciona en iPhone con websockets.
 4. En los Ajustes del dashboard, pon la IP de NPM como proxy de confianza.
 
-## Avisos (ntfy)
+## Notificaciones push
 
-1. Instala la app [ntfy](https://ntfy.sh) en el móvil y suscríbete a un tema largo y difícil de adivinar, por ejemplo `k2-8f3kq0zt2m`.
-2. En **Ajustes → Avisos**, pon el mismo tema y pulsa **Enviar aviso de prueba**.
+El propio dashboard manda las notificaciones (Web Push estándar, con claves VAPID propias). No hace falta ntfy, ni Pushover, ni instalar otra app.
 
-Cualquiera que sepa el tema puede leer los avisos: trátalo como una contraseña. Puedes usar tu propio servidor de ntfy cambiando el campo "Servidor".
+1. **Ajustes → Avisos**: pon un **correo de contacto** y guarda. Apple, Google y Mozilla lo exigen para aceptar los avisos: sin él no llegan. Viene de `PUSH_CONTACT_EMAIL` si lo pusiste en `.env`.
+2. En cada dispositivo donde quieras recibirlos, pulsa **Activar avisos en este dispositivo** y acepta el permiso. Llega una notificación de prueba.
 
-Avisa cuando una impresión empieza, termina, falla, se pausa o se cancela, cuando se acaba el filamento y cuando Klipper se apaga o da error.
+Requisitos:
+
+- **HTTPS**: entra por tu dominio, no por la IP. Los navegadores solo permiten notificaciones en sitios seguros.
+- **iPhone y iPad (iOS 16.4+)**: solo funciona desde la app **añadida a la pantalla de inicio** (Safari → Compartir → Añadir a pantalla de inicio). Desde Safari normal no se puede.
+- **Android, Mac, Windows y Linux**: funciona en Chrome, Edge, Firefox y Safari, también sin instalar la app.
+
+Avisa cuando una impresión empieza, termina, falla, se pausa o se cancela, cuando se acaba el filamento y cuando Klipper se apaga o da error. Al tocar la notificación se abre el dashboard (en el dominio de Ajustes → Impresora, si lo pusiste).
+
+La lista **Dispositivos con avisos** muestra los suscritos y permite quitar cualquiera. Las suscripciones que caducan (por ejemplo, si borras la app del móvil) se eliminan solas.
+
+Las claves VAPID se crean en el primer arranque y se guardan en `data/config.json`. Si borras ese archivo, hay que volver a activar los avisos en cada dispositivo.
 
 ## Cuenta
 

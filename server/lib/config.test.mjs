@@ -13,7 +13,9 @@ describe('primer arranque', () => {
     expect(cfg.auth.mustChange).toBe(true);
     expect(await verifyPassword('changeme', cfg.auth.hash)).toBe(true);
     expect(cfg.auth.secret.length).toBeGreaterThanOrEqual(32);
-    expect(cfg.settings).toMatchObject({ printerHost: '10.0.0.5', trustedProxies: ['10.0.0.1', '10.0.0.2'], ntfyUrl: 'https://ntfy.sh' });
+    expect(cfg.settings).toEqual({ printerHost: '10.0.0.5', panelUrl: '', trustedProxies: ['10.0.0.1', '10.0.0.2'], pushContact: '' });
+    expect(Buffer.from(cfg.push.vapid.publicKey, 'base64url')).toHaveLength(65);
+    expect(cfg.push.subscriptions).toEqual([]);
     expect((await stat(join(dir, 'config.json'))).mode & 0o777).toBe(0o600);
   });
 
@@ -28,18 +30,19 @@ describe('primer arranque', () => {
 });
 
 describe('settingsFromEnv', () => {
-  it('valores por defecto', () => expect(settingsFromEnv({})).toEqual({ printerHost: '', panelUrl: '', trustedProxies: [], ntfyUrl: 'https://ntfy.sh', ntfyTopic: '' }));
+  it('valores por defecto', () => expect(settingsFromEnv({})).toEqual({ printerHost: '', panelUrl: '', trustedProxies: [], pushContact: '' }));
+  it('correo de contacto', () => expect(settingsFromEnv({ PUSH_CONTACT_EMAIL: ' yo@ejemplo.com ' }).pushContact).toBe('yo@ejemplo.com'));
 });
 
 describe('validateSettings', () => {
   it('limpia y acepta valores buenos', () => {
-    expect(validateSettings({ printerHost: ' 192.168.1.50 ', panelUrl: 'https://k2.ejemplo.com/', trustedProxies: '192.168.1.10 10.0.0.0/8', ntfyUrl: '', ntfyTopic: 'k2-abc_1' })).toEqual({
-      settings: { printerHost: '192.168.1.50', panelUrl: 'https://k2.ejemplo.com', trustedProxies: ['192.168.1.10', '10.0.0.0/8'], ntfyUrl: 'https://ntfy.sh', ntfyTopic: 'k2-abc_1' },
+    expect(validateSettings({ printerHost: ' 192.168.1.50 ', panelUrl: 'https://k2.ejemplo.com/', trustedProxies: '192.168.1.10 10.0.0.0/8', pushContact: 'mailto:yo@ejemplo.com' })).toEqual({
+      settings: { printerHost: '192.168.1.50', panelUrl: 'https://k2.ejemplo.com', trustedProxies: ['192.168.1.10', '10.0.0.0/8'], pushContact: 'yo@ejemplo.com' },
     });
   });
   it('marca cada campo malo', () => {
-    const { errors } = validateSettings({ printerHost: 'http://x:7125', panelUrl: 'ftp://x', trustedProxies: 'proxy.local', ntfyUrl: 'nada', ntfyTopic: 'con espacios' });
-    expect(Object.keys(errors).sort()).toEqual(['ntfyTopic', 'ntfyUrl', 'panelUrl', 'printerHost', 'trustedProxies']);
+    const { errors } = validateSettings({ printerHost: 'http://x:7125', panelUrl: 'ftp://x', trustedProxies: 'proxy.local', pushContact: 'no-es-correo' });
+    expect(Object.keys(errors).sort()).toEqual(['panelUrl', 'printerHost', 'pushContact', 'trustedProxies']);
   });
   it('no deja inyectar directivas de nginx', () => {
     expect(validateSettings({ printerHost: '1.2.3.4"; include /etc/passwd; #' }).errors?.printerHost).toBeTruthy();
@@ -76,5 +79,18 @@ describe('publicView', () => {
     const view = JSON.stringify(publicView(await loadConfig(dir, {})));
     expect(view).not.toContain('scrypt');
     expect(view).not.toContain('secret');
+    expect(view).not.toContain('privateJwk');
+  });
+
+  it('configuraciones antiguas: quita ntfy y crea las claves de push', async () => {
+    const { writeFile } = await import('node:fs/promises');
+    const dir = await mkdtemp(join(tmpdir(), 'k2cfg-'));
+    const old = await loadConfig(dir, {});
+    delete old.push;
+    old.settings = { ...old.settings, ntfyUrl: 'https://ntfy.sh', ntfyTopic: 'secreto' };
+    await writeFile(join(dir, 'config.json'), JSON.stringify(old));
+    const cfg = await loadConfig(dir, {});
+    expect(cfg.settings).not.toHaveProperty('ntfyTopic');
+    expect(cfg.push.vapid.publicKey).toBeTruthy();
   });
 });

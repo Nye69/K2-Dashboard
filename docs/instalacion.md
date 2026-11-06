@@ -40,7 +40,7 @@ nano .env
 | `PRINTER_HOST` | IP o nombre de la impresora, sin `http://` ni puerto. |
 | `PANEL_URL` | Dirección pública del dashboard (se usa en los avisos para abrir la app). |
 | `TRUSTED_PROXIES` | IP del proxy inverso que tengas delante, separadas por comas. |
-| `NTFY_URL` / `NTFY_TOPIC` | Servidor y tema de ntfy para los avisos. |
+| `PUSH_CONTACT_EMAIL` | Correo de contacto para las notificaciones push. **Obligatorio para que lleguen**: Apple, Google y Mozilla lo exigen. |
 | `TZ` | Zona horaria de los registros, por ejemplo `America/New_York`. |
 
 `.env` nunca se sube a git.
@@ -70,8 +70,8 @@ docker compose up -d --build
 
 Las primeras versiones usaban tres contenedores (`k2-panel`, `k2-auth`, `k2-notify`). Para cambiar:
 
-1. Apunta el tema de ntfy que usabas, que está en el `.env` antiguo.
-2. `docker compose down` en la carpeta antigua.
-3. Instala esta versión en una carpeta nueva con el **mismo puerto**, así no hay que tocar el proxy inverso.
-4. Haz el primer inicio de sesión desde la red local y crea tu usuario. La contraseña antigua no se migra.
-5. En Ajustes, pon la IP de la impresora, el dominio, el proxy y el tema de ntfy.
+1. `docker compose down` en la carpeta antigua.
+2. Instala esta versión en una carpeta nueva con el **mismo puerto**, así no hay que tocar el proxy inverso.
+3. Haz el primer inicio de sesión desde la red local y crea tu usuario. La contraseña antigua no se migra.
+4. En Ajustes, pon la IP de la impresora, el dominio, el proxy y el correo de contacto.
+5. Los avisos ya no usan ntfy: en cada celular, abre la app instalada → Ajustes → Avisos → **Activar avisos en este dispositivo**. Puedes desinstalar la app de ntfy.

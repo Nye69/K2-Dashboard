@@ -12,7 +12,7 @@ Navegador ──► (proxy inverso con HTTPS, opcional) ──► contenedor k2-
                                                        └─ Node (127.0.0.1:8080)
                                                             ├─ /login, /setup, /auth/*   inicio de sesión y primer arranque
                                                             ├─ /auth/api/*               ajustes y cuenta (para la app)
-                                                            └─ avisos ──► Moonraker (websocket) y ──► ntfy
+                                                            └─ avisos ──► Moonraker (websocket) y ──► Web Push (Apple, Google, Mozilla…)
 ```
 
 ## Un contenedor, dos procesos
@@ -43,6 +43,12 @@ Los valores se validan antes de escribirlos (solo IP, nombres de host y rangos C
 - La sesión es una cookie firmada con HMAC (`usuario + caducidad`). Al cambiar la contraseña se genera un secreto nuevo, y eso invalida todas las sesiones anteriores.
 - Las peticiones que cambian algo exigen `Content-Type: application/json` y, si el navegador manda `Origin`, que sea el mismo sitio. Esto protege contra CSRF.
 
+## Notificaciones push
+
+`server/lib/webpush.mjs` implementa Web Push sin dependencias: firma VAPID con ES256 (RFC 8292) y cifra el mensaje con `aes128gcm` (RFC 8291) para cada suscripción. Solo usa `node:crypto`. El correo de contacto va como `sub: mailto:…` en el JWT.
+
+En el navegador, `public/sw.js` es un service worker que **solo** muestra notificaciones y abre la app al tocarlas. No guarda nada en caché, así que nunca sirve una versión vieja de la app.
+
 ## Por qué el websocket de Creality
 
 Moonraker no sabe el tiempo restante que muestra la pantalla de la impresora. Ese dato sale del servicio propio de Creality en el puerto 9999 (`printLeftTime`), que la app consulta a través de `/k2ws`. Si no responde, la app usa su propia estimación.
@@ -52,6 +58,6 @@ Moonraker no sabe el tiempo restante que muestra la pantalla de la impresora. Es
 | Carpeta | Contenido |
 |---|---|
 | `src/` | App React + TypeScript (Vite). `moonraker/` tiene el cliente JSON-RPC y la API, `components/` las tarjetas, y `settings/` la API de ajustes. |
-| `server/` | Servidor Node sin dependencias externas. `lib/` tiene la lógica pura con pruebas: sesiones, configuración, red y avisos. |
+| `server/` | Servidor Node sin dependencias externas. `lib/` tiene la lógica pura con pruebas: sesiones, configuración, red, eventos de la impresora y web push. |
 | `docker/` | `nginx.conf` y `entrypoint.sh`. |
-| `public/` | Iconos, manifiesto PWA y `sw.js`, que desactiva service workers antiguos del dominio. |
+| `public/` | Iconos, manifiesto PWA y `sw.js` (service worker de las notificaciones). |
