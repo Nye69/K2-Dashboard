@@ -370,3 +370,10 @@ button, input { font: inherit; color: inherit; }
 .device-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 4px 6px 10px; border-radius: 8px; background: var(--surface); font-size: 14px; }
 .device-this { color: var(--accent); font-weight: 600; }
 .device-date { display: block; font-size: 12px; color: var(--text-3); }
+
+/* Cambiar el nombre de un archivo */
+.rename { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.rename input { flex: 1; min-width: 0; height: 36px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); font-size: 16px; }
+.rename input[aria-invalid="true"] { border-color: var(--danger); }
+.rename-ext { color: var(--text-3); font-size: 13px; flex: none; }
+.rename .icon-btn { width: 36px; height: 36px; flex: none; }

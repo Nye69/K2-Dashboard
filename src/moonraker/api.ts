@@ -51,6 +51,14 @@ export const listFiles = () =>
 export const deleteFile = (path: string) =>
   fetch(`/server/files/gcodes/${enc(path)}`, { method: 'DELETE' }).then((r) => json(r));
 
+/** Cambia el nombre (o la carpeta) de un archivo. Moonraker mueve también sus metadatos. */
+export const renameFile = (from: string, to: string) =>
+  fetch('/server/files/move', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source: `gcodes/${from}`, dest: `gcodes/${to}` }),
+  }).then((r) => json(r));
+
 export const startPrint = (filename: string) => post(`/printer/print/start?filename=${encodeURIComponent(filename)}`);
 export const pausePrint = () => post('/printer/print/pause');
 export const resumePrint = () => post('/printer/print/resume');
