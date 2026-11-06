@@ -1,5 +1,5 @@
 # --- compilar la app (en la arquitectura del que construye: rápido también para arm64) ---
-FROM --platform=$BUILDPLATFORM node:22-alpine AS build
+FROM --platform=$BUILDPLATFORM node:25-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
