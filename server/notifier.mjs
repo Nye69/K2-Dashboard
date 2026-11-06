@@ -1,23 +1,16 @@
-// Vigila la impresora por el websocket de Moonraker y manda avisos al móvil con ntfy.
-// Se reconfigura en caliente cuando cambian los ajustes (IP de la impresora, tema de ntfy...).
+// Vigila la impresora por el websocket de Moonraker y avisa de lo importante (onEvent → notificaciones push).
+// Se reconfigura en caliente cuando cambia la IP de la impresora.
 import { detectEvents } from './lib/events.mjs';
 
 const SENSORS = ['filament_switch_sensor filament_sensor', 'filament_switch_sensor filament_sensor_2'];
 const log = (...a) => console.log(new Date().toISOString(), '[avisos]', ...a);
 
-export async function sendNtfy(settings, { title, message, priority = 3, tags = [] }) {
-  if (!settings.ntfyTopic) throw new Error('No hay tema de ntfy configurado');
-  // Publicación en JSON: admite tildes y eñes en el título (las cabeceras HTTP no).
-  const res = await fetch(settings.ntfyUrl || 'https://ntfy.sh', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ topic: settings.ntfyTopic, title, message: message || ' ', priority, tags, ...(settings.panelUrl ? { click: settings.panelUrl } : {}) }),
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!res.ok) throw new Error(`ntfy respondió ${res.status}`);
-}
-
 export class Notifier {
+  /** @param {(ev: {id: string, title: string, message: string, priority: number}) => void} onEvent */
+  constructor(onEvent) {
+    this.onEvent = onEvent;
+  }
+
   settings = {};
   ws = null;
   timer = null;
@@ -65,7 +58,7 @@ export class Notifier {
     const snap = this.snapshot();
     for (const ev of detectEvents(this.prevSnap, snap)) {
       log('aviso:', ev.id, ev.message);
-      if (this.settings.ntfyTopic) sendNtfy(this.settings, ev).catch((e) => log('no se pudo avisar:', e.message));
+      this.onEvent(ev);
     }
     this.prevSnap = snap;
   }

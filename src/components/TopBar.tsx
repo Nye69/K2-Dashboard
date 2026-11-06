@@ -27,7 +27,7 @@ export function TopBar({ onSettings }: { onSettings: () => void }) {
     <header className="topbar">
       <div className="brand">
         <span className="brand-icon"><Printer size={20} aria-hidden /></span>
-        K2<span className="brand-sub"> Dashboard</span>
+        K2<span className="brand-sub">Dashboard</span>
       </div>
       <div className="spacer" />
       {conn === 'open' && state[1] && (

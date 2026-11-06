@@ -19,7 +19,7 @@ Abre `http://localhost:5173/login`. En desarrollo, Vite reenvía la API de Moonr
 
 ```bash
 docker build -t k2-dashboard .
-docker run --rm -p 8095:80 -v "$PWD/data:/data" k2-dashboard
+docker run --rm -p 8095:8095 -v "$PWD/data:/data" k2-dashboard
 ```
 
 El `Dockerfile` ejecuta las pruebas antes de compilar: si fallan, no hay imagen.

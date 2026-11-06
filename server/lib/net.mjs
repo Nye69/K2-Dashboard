@@ -63,16 +63,47 @@ export function isHost(value) {
   return s.length <= 253 && /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/i.test(s);
 }
 
+/** Última IP de X-Forwarded-For: la que añadió el proxy más cercano (la única que no puede inventar el cliente). */
+export function lastForwarded(xff) {
+  const parts = String(xff ?? '')
+    .split(',')
+    .map((p) => normalizeIp(p.trim()))
+    .filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : '';
+}
+
 /**
- * ¿La petición viene de la red local?
- * nginx pasa: clientIp ($remote_addr, ya corregido por real_ip si el proxy es de confianza),
- * peerIp ($realip_remote_addr, quien abrió la conexión) y forwarded (cabeceras X-Forwarded-For / X-Real-IP).
- * Si llegó reenviada por un proxy que NO es de confianza, no se sabe de dónde viene: se trata como externa.
- * Así, detrás de Nginx Proxy Manager sin configurar, nadie desde Internet pasa por "red local".
+ * IP de origen de una petición. nginx pasa:
+ *   clientIp      $remote_addr (ya corregido por real_ip si el proxy está en "proxies de confianza")
+ *   peerIp        $realip_remote_addr (quien abrió la conexión con nginx)
+ *   forwardedFor  X-Forwarded-For tal como llegó
+ *   realIp        X-Real-IP tal como llegó
+ *
+ * - Sin cabeceras de proxy: la conexión directa.
+ * - Proxy de confianza (nginx ya corrigió la IP): esa IP.
+ * - Proxy no configurado pero dentro de la red local (Nginx Proxy Manager en casa, por ejemplo): se usa la
+ *   última IP de X-Forwarded-For, que la añade ese proxy y nadie desde fuera puede falsificar.
+ * - Proxy no configurado con IP pública: no se sabe de dónde viene; se devuelve la del proxy.
  */
-export function isLanRequest({ clientIp, peerIp, forwarded }) {
+export function originIp({ clientIp, peerIp, forwardedFor = '', realIp = '' }) {
   const client = normalizeIp(clientIp);
   const peer = normalizeIp(peerIp || clientIp);
-  if (forwarded && client === peer) return false;
-  return isPrivateIp(client);
+  const forwarded = String(forwardedFor).trim() || String(realIp).trim();
+  if (!forwarded || client !== peer) return client;
+  if (!isPrivateIp(peer)) return peer;
+  const fromProxy = lastForwarded(forwardedFor) || normalizeIp(realIp);
+  return isIP(fromProxy) ? fromProxy : peer;
+}
+
+/**
+ * ¿La petición viene de la red local? (para el primer arranque con admin / changeme)
+ * Entrando por un proxy de la propia red, cuenta la IP real del visitante: desde casa sí, desde Internet no.
+ */
+export function isLanRequest(info) {
+  const { clientIp, peerIp, forwardedFor = '', realIp = '' } = info;
+  const forwarded = String(forwardedFor).trim() || String(realIp).trim();
+  const peer = normalizeIp(peerIp || clientIp);
+  // Reenviada por un proxy con IP pública que no está en "proxies de confianza": no se puede saber el origen.
+  if (forwarded && normalizeIp(clientIp) === peer && !isPrivateIp(peer)) return false;
+  return isPrivateIp(originIp(info));
 }

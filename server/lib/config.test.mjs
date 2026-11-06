@@ -1,9 +1,9 @@
-import { mkdtemp, readFile, stat } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { verifyPassword } from './auth.mjs';
-import { loadConfig, nginxIncludes, publicView, saveConfig, settingsFromEnv, validateCredentials, validateSettings } from './config.mjs';
+import { loadConfig, nginxIncludes, normalizePanelUrl, publicView, saveConfig, settingsFromEnv, validateCredentials, validateSettings } from './config.mjs';
 
 describe('primer arranque', () => {
   it('crea admin/changeme, obliga a cambiarlos y toma los ajustes del entorno', async () => {
@@ -13,8 +13,16 @@ describe('primer arranque', () => {
     expect(cfg.auth.mustChange).toBe(true);
     expect(await verifyPassword('changeme', cfg.auth.hash)).toBe(true);
     expect(cfg.auth.secret.length).toBeGreaterThanOrEqual(32);
-    expect(cfg.settings).toMatchObject({ printerHost: '10.0.0.5', trustedProxies: ['10.0.0.1', '10.0.0.2'], ntfyUrl: 'https://ntfy.sh' });
-    expect((await stat(join(dir, 'config.json'))).mode & 0o777).toBe(0o600);
+    expect(cfg.settings).toEqual({ printerHost: '10.0.0.5', panelUrl: '', trustedProxies: ['10.0.0.1', '10.0.0.2'], pushContact: '' });
+    expect(Buffer.from(cfg.push.vapid.publicKey, 'base64url')).toHaveLength(65);
+    expect(cfg.push.subscriptions).toEqual([]);
+    const files = (await readdir(dir)).sort();
+    expect(files).toEqual(['devices.json', 'secrets.json', 'settings.json', 'storage', 'users.json']);
+    for (const f of ['users.json', 'secrets.json', 'settings.json', 'devices.json']) expect((await stat(join(dir, f))).mode & 0o777).toBe(0o600);
+    expect(await readdir(join(dir, 'storage'))).toEqual(['LEEME.txt']);
+    const users = JSON.parse(await readFile(join(dir, 'users.json'), 'utf8'));
+    expect(users.users).toEqual([{ username: 'admin', hash: expect.stringMatching(/^scrypt\$/), role: 'admin', mustChange: true }]);
+    expect(await readFile(join(dir, 'settings.json'), 'utf8')).not.toContain('scrypt');
   });
 
   it('después manda el archivo, no el entorno', async () => {
@@ -23,23 +31,32 @@ describe('primer arranque', () => {
     cfg.settings.printerHost = '10.0.0.9';
     await saveConfig(dir, cfg);
     expect((await loadConfig(dir, { PRINTER_HOST: '10.0.0.5' })).settings.printerHost).toBe('10.0.0.9');
-    expect(JSON.parse(await readFile(join(dir, 'config.json'), 'utf8')).settings.printerHost).toBe('10.0.0.9');
+    expect(JSON.parse(await readFile(join(dir, 'settings.json'), 'utf8')).printerHost).toBe('10.0.0.9');
+  });
+});
+
+describe('normalizePanelUrl', () => {
+  it('añade https:// si falta y quita la barra final', () => {
+    expect(normalizePanelUrl('k2.ejemplo.com')).toBe('https://k2.ejemplo.com');
+    expect(normalizePanelUrl('http://192.168.1.5:8095/')).toBe('http://192.168.1.5:8095');
+    expect(normalizePanelUrl('')).toBe('');
   });
 });
 
 describe('settingsFromEnv', () => {
-  it('valores por defecto', () => expect(settingsFromEnv({})).toEqual({ printerHost: '', panelUrl: '', trustedProxies: [], ntfyUrl: 'https://ntfy.sh', ntfyTopic: '' }));
+  it('valores por defecto', () => expect(settingsFromEnv({})).toEqual({ printerHost: '', panelUrl: '', trustedProxies: [], pushContact: '' }));
+  it('correo de contacto', () => expect(settingsFromEnv({ PUSH_CONTACT_EMAIL: ' yo@ejemplo.com ' }).pushContact).toBe('yo@ejemplo.com'));
 });
 
 describe('validateSettings', () => {
   it('limpia y acepta valores buenos', () => {
-    expect(validateSettings({ printerHost: ' 192.168.1.50 ', panelUrl: 'https://k2.ejemplo.com/', trustedProxies: '192.168.1.10 10.0.0.0/8', ntfyUrl: '', ntfyTopic: 'k2-abc_1' })).toEqual({
-      settings: { printerHost: '192.168.1.50', panelUrl: 'https://k2.ejemplo.com', trustedProxies: ['192.168.1.10', '10.0.0.0/8'], ntfyUrl: 'https://ntfy.sh', ntfyTopic: 'k2-abc_1' },
+    expect(validateSettings({ printerHost: ' 192.168.1.50 ', panelUrl: 'https://k2.ejemplo.com/', trustedProxies: '192.168.1.10 10.0.0.0/8', pushContact: 'mailto:yo@ejemplo.com' })).toEqual({
+      settings: { printerHost: '192.168.1.50', panelUrl: 'https://k2.ejemplo.com', trustedProxies: ['192.168.1.10', '10.0.0.0/8'], pushContact: 'yo@ejemplo.com' },
     });
   });
   it('marca cada campo malo', () => {
-    const { errors } = validateSettings({ printerHost: 'http://x:7125', panelUrl: 'ftp://x', trustedProxies: 'proxy.local', ntfyUrl: 'nada', ntfyTopic: 'con espacios' });
-    expect(Object.keys(errors).sort()).toEqual(['ntfyTopic', 'ntfyUrl', 'panelUrl', 'printerHost', 'trustedProxies']);
+    const { errors } = validateSettings({ printerHost: 'http://x:7125', panelUrl: 'ftp://x', trustedProxies: 'proxy.local', pushContact: 'no-es-correo' });
+    expect(Object.keys(errors).sort()).toEqual(['panelUrl', 'printerHost', 'pushContact', 'trustedProxies']);
   });
   it('no deja inyectar directivas de nginx', () => {
     expect(validateSettings({ printerHost: '1.2.3.4"; include /etc/passwd; #' }).errors?.printerHost).toBeTruthy();
@@ -76,5 +93,26 @@ describe('publicView', () => {
     const view = JSON.stringify(publicView(await loadConfig(dir, {})));
     expect(view).not.toContain('scrypt');
     expect(view).not.toContain('secret');
+    expect(view).not.toContain('privateJwk');
   });
+
+  it('migra el config.json antiguo a los archivos nuevos (y quita ntfy)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'k2cfg-'));
+    const old = {
+      version: 1,
+      auth: { user: 'pepe', hash: 'scrypt$aaa$bbb', mustChange: false, secret: 'x'.repeat(43) },
+      settings: { printerHost: '10.0.0.5', panelUrl: 'k2.ejemplo.com', trustedProxies: [], ntfyUrl: 'https://ntfy.sh', ntfyTopic: 'secreto' },
+    };
+    await writeFile(join(dir, 'config.json'), JSON.stringify(old));
+    const cfg = await loadConfig(dir, {});
+    expect(cfg.auth).toEqual(old.auth);
+    expect(cfg.settings).toEqual({ printerHost: '10.0.0.5', panelUrl: 'https://k2.ejemplo.com', trustedProxies: [], pushContact: '' });
+    expect(cfg.push.vapid.publicKey).toBeTruthy();
+    const files = await readdir(dir);
+    expect(files).toContain('config.json.migrado');
+    expect(files).not.toContain('config.json');
+    // y al volver a cargar sale lo mismo
+    expect((await loadConfig(dir, {})).auth.user).toBe('pepe');
+  });
+
 });

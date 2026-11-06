@@ -1,10 +1,11 @@
-import { Bell, Check, Eye, EyeOff, LoaderCircle, Printer, Shield, UserRound, X } from 'lucide-react';
+import { Bell, BellOff, Check, Eye, EyeOff, LoaderCircle, Printer, Send, Shield, Smartphone, Trash2, UserRound, X } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { ApiError, getSettings, saveSettings, testNtfy, updateAccount, type FieldErrors, type Settings } from '../settings/api';
+import { ApiError, getSettings, saveSettings, updateAccount, type FieldErrors, type Settings } from '../settings/api';
+import { currentSubscription, disablePush, enablePush, getPushInfo, pushSupport, removeDevice, sendTestPush, type PushInfo } from '../settings/push';
 
 type Tab = 'printer' | 'notify' | 'account';
 
-const EMPTY: Settings = { printerHost: '', panelUrl: '', trustedProxies: [], ntfyUrl: 'https://ntfy.sh', ntfyTopic: '' };
+const EMPTY: Settings = { printerHost: '', panelUrl: '', trustedProxies: [], pushContact: '' };
 
 export function SettingsDialog({ onClose, onSaved }: { onClose: () => void; onSaved: (s: Settings) => void }) {
   const [tab, setTab] = useState<Tab>('printer');
@@ -16,6 +17,8 @@ export function SettingsDialog({ onClose, onSaved }: { onClose: () => void; onSa
   const [message, setMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [acc, setAcc] = useState({ currentPassword: '', user: '', password: '', confirm: '' });
+  // Correo guardado en el servidor (no el que se está escribiendo): sin él no se pueden mandar avisos.
+  const [savedContact, setSavedContact] = useState('');
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -24,6 +27,7 @@ export function SettingsDialog({ onClose, onSaved }: { onClose: () => void; onSa
         setUser(v.user);
         setForm(v.settings);
         setProxies(v.settings.trustedProxies.join(', '));
+        setSavedContact(v.settings.pushContact);
         setAcc((a) => ({ ...a, user: v.user }));
         setLoaded(true);
       })
@@ -53,22 +57,9 @@ export function SettingsDialog({ onClose, onSaved }: { onClose: () => void; onSa
       const v = await saveSettings({ ...form, trustedProxies: proxies.split(/[\s,]+/).filter(Boolean) });
       setForm(v.settings);
       setProxies(v.settings.trustedProxies.join(', '));
+      setSavedContact(v.settings.pushContact);
       setMessage({ kind: 'ok', text: 'Ajustes guardados.' });
       onSaved(v.settings);
-    } catch (e) {
-      fail(e);
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const sendTest = async () => {
-    setBusy('ntfy');
-    setErrors({});
-    setMessage(null);
-    try {
-      await testNtfy({ ntfyUrl: form.ntfyUrl, ntfyTopic: form.ntfyTopic, panelUrl: form.panelUrl });
-      setMessage({ kind: 'ok', text: 'Aviso de prueba enviado. Si no llega, revisa que estés suscrito al mismo tema en la app de ntfy.' });
     } catch (e) {
       fail(e);
     } finally {
@@ -161,20 +152,14 @@ export function SettingsDialog({ onClose, onSaved }: { onClose: () => void; onSa
 
         {loaded && tab === 'notify' && (
           <div className="settings-body">
-            <Field label="Servidor de ntfy" hint="Por defecto el público, https://ntfy.sh. Si tienes tu propio servidor de ntfy, pon su dirección." error={errors.ntfyUrl}>
-              {(id) => <input id={id} value={form.ntfyUrl} onChange={(e) => set('ntfyUrl')(e.target.value)} placeholder="https://ntfy.sh" inputMode="url" autoCapitalize="none" spellCheck={false} />}
-            </Field>
             <Field
-              label="Tema"
-              hint="Suscríbete a este mismo tema en la app de ntfy del móvil. Cualquiera que lo sepa puede leer tus avisos: usa uno largo y difícil de adivinar. Vacío = sin avisos."
-              error={errors.ntfyTopic}
+              label="Correo de contacto"
+              hint="Apple, Google y Mozilla exigen un correo para aceptar las notificaciones (por si hay un problema con el envío). No se muestra a nadie más. Guarda antes de activar los avisos."
+              error={errors.pushContact}
             >
-              {(id) => <input id={id} value={form.ntfyTopic} onChange={(e) => set('ntfyTopic')(e.target.value)} placeholder="k2-un-tema-largo-y-secreto" autoCapitalize="none" spellCheck={false} />}
+              {(id) => <input id={id} type="email" value={form.pushContact} onChange={(e) => set('pushContact')(e.target.value)} placeholder="tu@correo.com" autoCapitalize="none" spellCheck={false} />}
             </Field>
-            <button className="btn" onClick={sendTest} disabled={!!busy || !form.ntfyTopic}>
-              {busy === 'ntfy' ? <LoaderCircle size={16} className="spin" aria-hidden /> : <Bell size={16} aria-hidden />}
-              Enviar aviso de prueba
-            </button>
+            <PushSection contactSaved={!!savedContact} />
           </div>
         )}
 
@@ -221,6 +206,108 @@ export function SettingsDialog({ onClose, onSaved }: { onClose: () => void; onSa
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function PushSection({ contactSaved }: { contactSaved: boolean }) {
+  const support = pushSupport();
+  const [info, setInfo] = useState<PushInfo | null>(null);
+  const [mine, setMine] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+
+  const refresh = async () => {
+    const [i, sub] = await Promise.all([getPushInfo(), support === 'ok' ? currentSubscription() : null]);
+    setInfo(i);
+    setMine(sub && i.devices.some((d) => d.endpoint === sub.endpoint) ? sub.endpoint : null);
+  };
+
+  useEffect(() => {
+    refresh().catch((e) => setMsg({ kind: 'err', text: (e as Error).message }));
+  }, []);
+
+  const act = async (key: string, fn: () => Promise<unknown>, ok?: string) => {
+    setBusy(key);
+    setMsg(null);
+    try {
+      await fn();
+      await refresh();
+      if (ok) setMsg({ kind: 'ok', text: ok });
+    } catch (e) {
+      setMsg({ kind: 'err', text: (e as Error).message });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const spinner = (key: string, icon: ReactNode) => (busy === key ? <LoaderCircle size={16} className="spin" aria-hidden /> : icon);
+
+  return (
+    <div className="push-box">
+      <div className="push-title">
+        <Smartphone size={16} aria-hidden />
+        Este dispositivo
+      </div>
+      {support === 'ios-browser' && (
+        <p className="field-hint">En iPhone y iPad los avisos solo funcionan desde la app: en Safari toca Compartir → Añadir a pantalla de inicio, ábrela desde ahí y vuelve a esta pantalla.</p>
+      )}
+      {support === 'insecure' && <p className="field-hint">Los avisos necesitan HTTPS. Entra por tu dominio (https://…) en vez de por la IP.</p>}
+      {support === 'unsupported' && <p className="field-hint">Este navegador no admite notificaciones push.</p>}
+      {support === 'ok' && !contactSaved && <p className="field-hint">Pon el correo de contacto y pulsa Guardar para poder activar los avisos.</p>}
+      {support === 'ok' && contactSaved && info && (
+        <div className="push-actions">
+          {mine ? (
+            <>
+              <span className="pill ok"><Bell size={14} aria-hidden />Avisos activados</span>
+              <button className="btn" disabled={!!busy} onClick={() => act('test', () => sendTestPush(mine), 'Notificación de prueba enviada.')}>
+                {spinner('test', <Send size={16} aria-hidden />)}Probar
+              </button>
+              <button className="btn" disabled={!!busy} onClick={() => act('off', disablePush, 'Avisos desactivados en este dispositivo.')}>
+                {spinner('off', <BellOff size={16} aria-hidden />)}Desactivar
+              </button>
+            </>
+          ) : (
+            <button
+              className="btn go"
+              disabled={!!busy}
+              onClick={() => act('on', async () => {
+                await enablePush(info.publicKey);
+                const sub = await currentSubscription();
+                if (sub) await sendTestPush(sub.endpoint);
+              }, 'Avisos activados. Te mandé una notificación de prueba.')}
+            >
+              {spinner('on', <Bell size={16} aria-hidden />)}Activar avisos en este dispositivo
+            </button>
+          )}
+        </div>
+      )}
+
+      {info && info.devices.length > 0 && (
+        <>
+          <div className="push-title" style={{ marginTop: 14 }}>Dispositivos con avisos</div>
+          <ul className="device-list">
+            {info.devices.map((d) => (
+              <li key={d.id}>
+                <span>
+                  {d.label}
+                  {d.endpoint === mine && <span className="device-this"> · este</span>}
+                  <span className="device-date">{new Date(d.createdAt).toLocaleDateString('es')}</span>
+                </span>
+                <button className="icon-btn danger" disabled={!!busy} onClick={() => act(`rm-${d.id}`, () => removeDevice(d.id))} aria-label={`Quitar ${d.label}`} title="Quitar">
+                  {spinner(`rm-${d.id}`, <Trash2 size={16} />)}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {msg && (
+        <div className={`alert ${msg.kind === 'ok' ? 'ok' : 'error'}`} role={msg.kind === 'ok' ? 'status' : 'alert'} style={{ marginTop: 10 }}>
+          {msg.text}
+        </div>
+      )}
     </div>
   );
 }

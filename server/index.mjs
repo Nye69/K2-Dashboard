@@ -10,9 +10,10 @@ import { promises as fsp, readFileSync, watchFile } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { hashPassword, makeLimiter, readCookie, signSession, verifyPassword, verifySession } from './lib/auth.mjs';
-import { configPath, DEFAULT_PASSWORD, DEFAULT_USER, loadConfig, nginxIncludes, publicView, saveConfig, validateCredentials, validateSettings } from './lib/config.mjs';
-import { isLanRequest, normalizeIp } from './lib/net.mjs';
-import { Notifier, sendNtfy } from './notifier.mjs';
+import { configPath, DEFAULT_PASSWORD, DEFAULT_USER, loadConfig, nginxIncludes, publicView, pushView, saveConfig, validateCredentials, validateSettings } from './lib/config.mjs';
+import { isLanRequest, normalizeIp, originIp } from './lib/net.mjs';
+import { isValidSubscription, sendPush, vapidSubject } from './lib/webpush.mjs';
+import { Notifier } from './notifier.mjs';
 import { loginPage, setupPage } from './pages.mjs';
 
 const DATA_DIR = process.env.DATA_DIR ?? '/data';
@@ -56,11 +57,53 @@ if (process.argv.includes('--prepare')) {
 }
 
 // --- servidor ---
-const notifier = new Notifier();
+/**
+ * Manda una notificación push a todos los dispositivos suscritos (o solo a uno).
+ * Las suscripciones que ya no existen (el usuario quitó el permiso o borró la app) se eliminan.
+ */
+async function broadcast(message, { urgency = 'normal', only } = {}) {
+  const subject = vapidSubject(cfg.settings.pushContact);
+  if (!subject) {
+    log('sin correo de contacto en Ajustes: no se envían notificaciones');
+    return { sent: 0, failed: 0, removed: 0, errors: ['Falta el correo de contacto en Ajustes → Avisos'] };
+  }
+  const targets = cfg.push.subscriptions.filter((sub) => !only || sub.endpoint === only);
+  const results = await Promise.all(
+    targets.map(async (sub) => {
+      try {
+        return { sub, r: await sendPush(sub, message, { vapid: cfg.push.vapid, subject, urgency }) };
+      } catch (e) {
+        return { sub, r: { ok: false, error: e.message } };
+      }
+    }),
+  );
+  const gone = new Set(results.filter((x) => x.r.gone).map((x) => x.sub.endpoint));
+  if (gone.size) {
+    cfg = { ...cfg, push: { ...cfg.push, subscriptions: cfg.push.subscriptions.filter((sub) => !gone.has(sub.endpoint)) } };
+    await saveConfig(DATA_DIR, cfg);
+    log('suscripciones caducadas eliminadas:', gone.size);
+  }
+  const failed = results.filter((x) => !x.r.ok && !x.r.gone);
+  for (const x of failed) log('notificación fallida en', x.sub.label, x.r.status ?? '', x.r.error ?? '');
+  return {
+    sent: results.filter((x) => x.r.ok).length,
+    failed: failed.length,
+    removed: gone.size,
+    errors: failed.map((x) => `${x.sub.label}: ${x.r.status ?? ''} ${x.r.error ?? ''}`.trim()),
+  };
+}
+
+const URGENCY = (priority) => (priority >= 4 ? 'high' : priority <= 2 ? 'low' : 'normal');
+
+const notifier = new Notifier((ev) => {
+  broadcast({ title: ev.title, body: ev.message || '', tag: `k2-${ev.id}`, url: cfg.settings.panelUrl || '/' }, { urgency: URGENCY(ev.priority) }).catch((e) =>
+    log('no se pudo notificar:', e.message),
+  );
+});
 notifier.apply(cfg.settings);
 await writeIncludes(cfg.settings);
 
-// Si alguien cambia config.json desde fuera (p. ej. --reset-login), se vuelve a leer.
+// Si alguien cambia users.json desde fuera (p. ej. --reset-login), se vuelve a leer.
 watchFile(configPath(DATA_DIR), { interval: 2000 }, async () => {
   try {
     const next = await loadConfig(DATA_DIR);
@@ -83,11 +126,16 @@ try {
 
 const limiter = makeLimiter(10, 15 * 60_000);
 
-const clientInfo = (req) => ({
-  clientIp: normalizeIp(String(req.headers['x-client-ip'] ?? req.socket.remoteAddress ?? '')),
-  peerIp: normalizeIp(String(req.headers['x-peer-ip'] ?? req.headers['x-client-ip'] ?? req.socket.remoteAddress ?? '')),
-  forwarded: String(req.headers['x-had-forward'] ?? '').trim(),
-});
+const clientInfo = (req) => {
+  const info = {
+    clientIp: normalizeIp(String(req.headers['x-client-ip'] ?? req.socket.remoteAddress ?? '')),
+    peerIp: normalizeIp(String(req.headers['x-peer-ip'] ?? req.headers['x-client-ip'] ?? req.socket.remoteAddress ?? '')),
+    forwardedFor: String(req.headers['x-fwd-for'] ?? ''),
+    realIp: String(req.headers['x-fwd-real-ip'] ?? ''),
+  };
+  // IP real del visitante (también para el límite de intentos de inicio de sesión).
+  return { ...info, clientIp: info.clientIp, origin: originIp(info) };
+};
 const isLan = (req) => isLanRequest(clientInfo(req));
 const isHttps = (req) => req.headers['x-forwarded-proto'] === 'https';
 
@@ -154,7 +202,7 @@ async function handle(req, res) {
 
   if (path === '/auth/login' && method === 'POST') {
     if (!sameOrigin(req)) return res.writeHead(403).end();
-    const { clientIp } = clientInfo(req);
+    const { origin: clientIp } = clientInfo(req);
     const now = Date.now();
     if (cfg.auth.mustChange && !isLan(req)) return html(res, 403, loginPage({ error: LAN_ONLY, iconDataUri }));
     if (limiter.blocked(clientIp, now)) return html(res, 429, loginPage({ error: 'Demasiados intentos. Espera 15 minutos.', iconDataUri }));
@@ -246,15 +294,38 @@ async function handle(req, res) {
       return json(res, 200, publicView(cfg), { 'Set-Cookie': newSessionCookie(req) });
     }
 
-    if (path === '/auth/api/ntfy-test' && method === 'POST') {
-      const v = validateSettings({ ...cfg.settings, ...body });
-      if (v.errors) return json(res, 400, { errors: v.errors });
-      try {
-        await sendNtfy(v.settings, { title: 'Avisos de la K2 activados', message: 'Así te llegarán los avisos de la impresora.', tags: ['printer'] });
-        return json(res, 200, { ok: true });
-      } catch (e) {
-        return json(res, 502, { error: e.message });
-      }
+    // ---- notificaciones push ----
+    if (path === '/auth/api/push' && method === 'GET') return json(res, 200, pushView(cfg));
+
+    if (path === '/auth/api/push/subscribe' && method === 'POST') {
+      const sub = body.subscription;
+      if (!isValidSubscription(sub)) return json(res, 400, { error: 'Suscripción no válida' });
+      const label = String(body.label ?? 'Dispositivo').trim().slice(0, 60) || 'Dispositivo';
+      const others = cfg.push.subscriptions.filter((x) => x.endpoint !== sub.endpoint);
+      if (others.length >= 50) return json(res, 400, { error: 'Demasiados dispositivos suscritos (máximo 50)' });
+      const entry = { id: randomBytes(6).toString('hex'), label, createdAt: new Date().toISOString(), endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth } };
+      cfg = { ...cfg, push: { ...cfg.push, subscriptions: [...others, entry] } };
+      await saveConfig(DATA_DIR, cfg);
+      log('dispositivo suscrito:', label);
+      return json(res, 200, pushView(cfg));
+    }
+
+    if (path === '/auth/api/push/unsubscribe' && method === 'POST') {
+      cfg = { ...cfg, push: { ...cfg.push, subscriptions: cfg.push.subscriptions.filter((x) => x.endpoint !== body.endpoint && x.id !== body.id) } };
+      await saveConfig(DATA_DIR, cfg);
+      return json(res, 200, pushView(cfg));
+    }
+
+    if (path === '/auth/api/push/test' && method === 'POST') {
+      if (!cfg.settings.pushContact) return json(res, 400, { errors: { pushContact: 'Pon primero un correo de contacto y guarda.' } });
+      const only = body.endpoint ? String(body.endpoint) : undefined;
+      if (!cfg.push.subscriptions.some((x) => !only || x.endpoint === only)) return json(res, 400, { error: 'Este dispositivo no tiene los avisos activados.' });
+      const r = await broadcast(
+        { title: 'Avisos de la K2 activados', body: 'Así te llegarán los avisos de la impresora.', tag: 'k2-test', url: cfg.settings.panelUrl || '/' },
+        { only },
+      );
+      if (!r.sent) return json(res, 502, { error: r.errors[0] ?? (r.removed ? 'La suscripción caducó; vuelve a activar los avisos.' : 'No se pudo enviar') });
+      return json(res, 200, r);
     }
 
     return json(res, 404, { error: 'No existe' });

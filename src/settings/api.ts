@@ -4,8 +4,7 @@ export interface Settings {
   printerHost: string;
   panelUrl: string;
   trustedProxies: string[];
-  ntfyUrl: string;
-  ntfyTopic: string;
+  pushContact: string;
 }
 
 export interface SettingsView {
@@ -43,4 +42,3 @@ async function call<T>(path: string, method = 'GET', body?: unknown): Promise<T>
 export const getSettings = () => call<SettingsView>('settings');
 export const saveSettings = (s: Settings) => call<SettingsView>('settings', 'PUT', s);
 export const updateAccount = (a: { currentPassword: string; user: string; password: string; confirm: string }) => call<SettingsView>('account', 'POST', a);
-export const testNtfy = (s: Pick<Settings, 'ntfyUrl' | 'ntfyTopic' | 'panelUrl'>) => call<{ ok: true }>('ntfy-test', 'POST', s);

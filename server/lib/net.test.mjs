@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isHost, isIpOrCidr, isLanRequest, isPrivateIp, normalizeIp, parseList } from './net.mjs';
+import { isHost, isIpOrCidr, isLanRequest, isPrivateIp, lastForwarded, normalizeIp, originIp, parseList } from './net.mjs';
 
 describe('isPrivateIp', () => {
   it('reconoce rangos privados, loopback y mapeados', () => {
@@ -41,12 +41,29 @@ describe('parseList', () => {
 });
 
 describe('isLanRequest', () => {
-  it('cliente directo en la LAN', () => expect(isLanRequest({ clientIp: '192.168.1.20', peerIp: '192.168.1.20', forwarded: '' })).toBe(true));
-  it('cliente directo desde Internet', () => expect(isLanRequest({ clientIp: '203.0.113.7', peerIp: '203.0.113.7', forwarded: '' })).toBe(false));
-  it('reenviada por un proxy NO configurado: nunca cuenta como LAN aunque el proxy sea local', () =>
-    expect(isLanRequest({ clientIp: '192.168.1.10', peerIp: '192.168.1.10', forwarded: '203.0.113.7' })).toBe(false));
-  it('proxy de confianza con cliente externo', () =>
-    expect(isLanRequest({ clientIp: '203.0.113.7', peerIp: '192.168.1.10', forwarded: '203.0.113.7' })).toBe(false));
-  it('proxy de confianza con cliente de la LAN', () =>
-    expect(isLanRequest({ clientIp: '192.168.1.20', peerIp: '192.168.1.10', forwarded: '192.168.1.20' })).toBe(true));
+  const lan = (o) => isLanRequest(o);
+  it('cliente directo en la LAN', () => expect(lan({ clientIp: '192.168.1.20', peerIp: '192.168.1.20' })).toBe(true));
+  it('cliente directo desde Internet', () => expect(lan({ clientIp: '203.0.113.7', peerIp: '203.0.113.7' })).toBe(false));
+  it('por un proxy de la LAN sin configurar, visitante de la LAN: sí', () =>
+    expect(lan({ clientIp: '192.168.1.10', peerIp: '192.168.1.10', forwardedFor: '192.168.1.20', realIp: '192.168.1.20' })).toBe(true));
+  it('por un proxy de la LAN sin configurar, visitante de Internet: no', () =>
+    expect(lan({ clientIp: '192.168.1.10', peerIp: '192.168.1.10', forwardedFor: '203.0.113.7', realIp: '203.0.113.7' })).toBe(false));
+  it('no se puede falsificar metiendo una IP local delante en X-Forwarded-For', () =>
+    expect(lan({ clientIp: '192.168.1.10', peerIp: '192.168.1.10', forwardedFor: '192.168.1.20, 203.0.113.7', realIp: '203.0.113.7' })).toBe(false));
+  it('proxy con IP pública sin configurar: nunca LAN', () =>
+    expect(lan({ clientIp: '198.51.100.4', peerIp: '198.51.100.4', forwardedFor: '192.168.1.20' })).toBe(false));
+  it('proxy de confianza con cliente externo', () => expect(lan({ clientIp: '203.0.113.7', peerIp: '192.168.1.10', forwardedFor: '203.0.113.7' })).toBe(false));
+  it('proxy de confianza con cliente de la LAN', () => expect(lan({ clientIp: '192.168.1.20', peerIp: '192.168.1.10', forwardedFor: '192.168.1.20' })).toBe(true));
+});
+
+describe('originIp', () => {
+  it('IP real para el límite de intentos', () => {
+    expect(originIp({ clientIp: '192.168.1.10', peerIp: '192.168.1.10', forwardedFor: '1.1.1.1, 203.0.113.7' })).toBe('203.0.113.7');
+    expect(originIp({ clientIp: '192.168.1.20', peerIp: '192.168.1.20' })).toBe('192.168.1.20');
+    expect(originIp({ clientIp: '198.51.100.4', peerIp: '198.51.100.4', forwardedFor: '203.0.113.7' })).toBe('198.51.100.4');
+  });
+  it('lastForwarded', () => {
+    expect(lastForwarded('a, b ,c')).toBe('c');
+    expect(lastForwarded('')).toBe('');
+  });
 });
