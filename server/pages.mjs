@@ -22,7 +22,7 @@ const textField = (name, label, value, error, extra = '') => `
     ${error ? `<span class="field-err">${esc(error)}</span>` : ''}
   </label>`;
 
-function shell({ title, iconDataUri, body }) {
+function shell({ title, iconDataUri, body, appTitle = 'K2' }) {
   // iOS 27 no carga el icono desde una URL al añadir a la pantalla de inicio (sale una letra): va incrustado.
   const touchIcon = iconDataUri ? `<link rel="apple-touch-icon" sizes="180x180" href="${iconDataUri}">` : '<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">';
   return `<!doctype html>
@@ -33,7 +33,7 @@ function shell({ title, iconDataUri, body }) {
 ${touchIcon}
 <link rel="icon" href="/icons/favicon-64.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="K2">
+<meta name="apple-mobile-web-app-title" content="${esc(appTitle)}">
 <title>${esc(title)}</title>
 <style>
   :root { color-scheme: dark; }
@@ -82,12 +82,13 @@ ${body}
 </body></html>`;
 }
 
-export function loginPage({ error = '', notice = '', iconDataUri, firstRun = false } = {}) {
+export function loginPage({ error = '', notice = '', iconDataUri, firstRun = false, name = 'K2' } = {}) {
   return shell({
-    title: 'K2 · Entrar',
+    title: `${name} · Entrar`,
+    appTitle: name,
     iconDataUri,
     body: `<form method="post" action="/auth/login">
-  <div class="brand"><img src="/icons/icon-192.png" alt="">K2 Dashboard</div>
+  <div class="brand"><img src="/icons/icon-192.png" alt="">${esc(name)}</div>
   ${firstRun ? '<div class="info">Primer arranque: entra con <b>admin</b> / <b>changeme</b> desde tu red local. Después te pedirá un usuario y una contraseña nuevos.</div>' : ''}
   ${notice ? `<div class="info" role="status">${esc(notice)}</div>` : ''}
   ${error ? `<div class="err" role="alert">${esc(error)}</div>` : ''}
@@ -98,9 +99,10 @@ export function loginPage({ error = '', notice = '', iconDataUri, firstRun = fal
   });
 }
 
-export function setupPage({ errors = {}, user = '', iconDataUri } = {}) {
+export function setupPage({ errors = {}, user = '', iconDataUri, name = 'K2' } = {}) {
   return shell({
-    title: 'K2 · Crear administrador',
+    title: `${name} · Crear administrador`,
+    appTitle: name,
     iconDataUri,
     body: `<form method="post" action="/auth/setup">
   <div class="brand"><img src="/icons/icon-192.png" alt="">Crea tu usuario</div>

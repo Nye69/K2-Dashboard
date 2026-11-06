@@ -5,7 +5,7 @@ import { currentSubscription, disablePush, enablePush, getPushInfo, pushSupport,
 
 type Tab = 'printer' | 'notify' | 'account';
 
-const EMPTY: Settings = { printerHost: '', panelUrl: '', trustedProxies: [], pushContact: '' };
+const EMPTY: Settings = { printerName: '', printerHost: '', panelUrl: '', trustedProxies: [], pushContact: '' };
 
 export function SettingsDialog({ onClose, onSaved }: { onClose: () => void; onSaved: (s: Settings) => void }) {
   const [tab, setTab] = useState<Tab>('printer');
@@ -34,12 +34,16 @@ export function SettingsDialog({ onClose, onSaved }: { onClose: () => void; onSa
       .catch((e) => setMessage({ kind: 'err', text: (e as Error).message }));
   }, []);
 
+  // onClose cambia en cada render del padre (y mientras imprime se renderiza cada segundo):
+  // se guarda en una ref para que el foco solo se ponga al abrir y no le quite el cursor al campo que se está escribiendo.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   useEffect(() => {
     dialogRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onCloseRef.current();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, []);
 
   const set = (k: keyof Settings) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -134,6 +138,9 @@ export function SettingsDialog({ onClose, onSaved }: { onClose: () => void; onSa
 
         {loaded && tab === 'printer' && (
           <div className="settings-body">
+            <Field label="Nombre de la impresora" hint="Sale arriba en el panel, en la pestaña del navegador, al iniciar sesión y en las notificaciones. Vacío = K2." error={errors.printerName}>
+              {(id) => <input id={id} value={form.printerName} onChange={(e) => set('printerName')(e.target.value)} placeholder="K2" maxLength={40} autoComplete="off" />}
+            </Field>
             <Field label="IP de la impresora" hint="La IP o el nombre de la impresora en tu red, sin http:// ni puerto. Conviene reservarla en el router para que no cambie." error={errors.printerHost}>
               {(id) => <input id={id} value={form.printerHost} onChange={(e) => set('printerHost')(e.target.value)} placeholder="192.168.1.50" inputMode="url" autoCapitalize="none" spellCheck={false} />}
             </Field>

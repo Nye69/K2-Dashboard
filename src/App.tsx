@@ -33,11 +33,17 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   // null = aún no se sabe; '' = falta configurar la impresora.
   const [printerHost, setPrinterHost] = useState<string | null>(null);
+  const [printerName, setPrinterName] = useState('');
+
+  useEffect(() => {
+    document.title = printerName ? `${printerName} · K2 Dashboard` : 'K2 Dashboard';
+  }, [printerName]);
 
   useEffect(() => {
     getSettings()
       .then((v) => {
         setPrinterHost(v.settings.printerHost);
+        setPrinterName(v.settings.printerName);
         if (!v.settings.printerHost) setSettingsOpen(true);
       })
       .catch(() => {});
@@ -52,7 +58,7 @@ export default function App() {
     <PrinterContext.Provider value={printer}>
       <ConfirmProvider>
         <div className="app">
-          <TopBar onSettings={() => setSettingsOpen(true)} />
+          <TopBar name={printerName} onSettings={() => setSettingsOpen(true)} />
           {printerHost === '' && (
             <div className="alert warn setup-banner" role="status">
               <span>Falta poner la IP de la impresora para conectarse.</span>
@@ -85,6 +91,7 @@ export default function App() {
             onSaved={(st) => {
               const changed = st.printerHost !== printerHost;
               setPrinterHost(st.printerHost);
+              setPrinterName(st.printerName);
               // La conexión con la impresora va por nginx: al cambiar la IP se vuelve a conectar desde cero.
               if (changed && printerHost !== null) setTimeout(() => location.reload(), 600);
             }}

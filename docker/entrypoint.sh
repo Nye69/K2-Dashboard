@@ -29,4 +29,10 @@ node /app/server/index.mjs --prepare
   done
 ) &
 
+# Esperar a que Node responda antes de abrir nginx: si no, el primer segundo da error 500 a quien ya tenga la app abierta.
+for i in $(seq 1 50); do
+  wget -qO- "http://127.0.0.1:${AUTH_PORT}/auth/health" >/dev/null 2>&1 && break
+  sleep 0.2
+done
+
 exec nginx -g 'daemon off;'

@@ -17,7 +17,16 @@ import { generateVapidKeys, isEmail } from './webpush.mjs';
 export const DEFAULT_USER = 'admin';
 export const DEFAULT_PASSWORD = 'changeme';
 
-export const SETTING_KEYS = ['printerHost', 'panelUrl', 'trustedProxies', 'pushContact'];
+export const SETTING_KEYS = ['printerName', 'printerHost', 'panelUrl', 'trustedProxies', 'pushContact'];
+
+/** Nombre que se muestra si no se ha puesto otro. */
+export const DEFAULT_PRINTER_NAME = 'K2';
+
+/** Nombre visible de la impresora: el elegido o "K2". */
+export const displayName = (settings) => settings?.printerName || DEFAULT_PRINTER_NAME;
+
+/** Limpia el nombre: sin espacios de sobra ni caracteres de control. */
+export const cleanName = (value) => String(value ?? '').replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim();
 
 /** Ajustes iniciales a partir del entorno. */
 /** "k2.midominio.com" → "https://k2.midominio.com" (sin barra final). */
@@ -30,6 +39,7 @@ export function normalizePanelUrl(value) {
 
 export function settingsFromEnv(env = process.env) {
   return {
+    printerName: cleanName(env.PRINTER_NAME).slice(0, 40),
     printerHost: (env.PRINTER_HOST ?? '').trim(),
     panelUrl: normalizePanelUrl(env.PANEL_URL),
     trustedProxies: parseList(env.TRUSTED_PROXIES),
@@ -53,11 +63,14 @@ const isHttpUrl = (s) => {
 export function validateSettings(input) {
   const errors = {};
   const s = {
+    printerName: cleanName(input?.printerName),
     printerHost: String(input?.printerHost ?? '').trim(),
     panelUrl: normalizePanelUrl(input?.panelUrl),
     trustedProxies: parseList(input?.trustedProxies),
     pushContact: String(input?.pushContact ?? '').trim().replace(/^mailto:/i, ''),
   };
+  if (s.printerName.length > 40) errors.printerName = 'Máximo 40 caracteres.';
+  else if (/[<>]/.test(s.printerName)) errors.printerName = 'El nombre no puede llevar < ni >.';
   if (s.printerHost && !isHost(s.printerHost)) errors.printerHost = 'Pon solo la IP o el nombre, sin http:// ni puerto (por ejemplo 192.168.1.50).';
   if (s.panelUrl && !isHttpUrl(s.panelUrl)) errors.panelUrl = 'Tiene que empezar por https:// (por ejemplo https://impresora.midominio.com).';
   const bad = s.trustedProxies.filter((p) => !isIpOrCidr(p));

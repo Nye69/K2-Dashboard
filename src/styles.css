@@ -377,3 +377,4 @@ button, input { font: inherit; color: inherit; }
 .rename input[aria-invalid="true"] { border-color: var(--danger); }
 .rename-ext { color: var(--text-3); font-size: 13px; flex: none; }
 .rename .icon-btn { width: 36px; height: 36px; flex: none; }
+.brand-name { min-width: 0; max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

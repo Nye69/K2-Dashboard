@@ -6,6 +6,7 @@ Los ajustes se cambian desde la app con el botón del **engranaje**, al lado de 
 
 | Ajuste | Qué poner |
 |---|---|
+| **Nombre de la impresora** | El que quieras (hasta 40 caracteres, se admiten tildes y emojis). Sale arriba en el panel, en la pestaña del navegador, al iniciar sesión y delante de cada notificación ("Mi K2: Impresión terminada"). Vacío = `K2`. |
 | **IP de la impresora** | Por ejemplo `192.168.1.50`. Puede ser un nombre si tu red lo resuelve. Sin `http://` ni puerto: el dashboard usa los de la K2 (7125 para Moonraker y 9999 para el tiempo restante de Creality). |
 | **Dominio del dashboard** | La dirección pública, por ejemplo `https://impresora.midominio.com`. Los avisos la usan para abrir la app al tocarlos. |
 | **Proxy inverso de confianza** | La IP de tu Nginx Proxy Manager, Traefik, Caddy… Varias, separadas por comas. También acepta rangos (`10.0.0.0/8`). |

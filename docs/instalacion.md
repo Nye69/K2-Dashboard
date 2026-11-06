@@ -52,6 +52,7 @@ nano .env
 |---|---|
 | `PORT` | Puerto donde escucha el dashboard, dentro y fuera del contenedor (por defecto `8095`). |
 | `DATA_PATH` | Carpeta del servidor donde se guardan los datos (por defecto `./data`). Ver [Rutas](#rutas). |
+| `PRINTER_NAME` | Nombre que se muestra en el panel, la pestaña, el inicio de sesión y las notificaciones (por defecto `K2`). |
 | `PRINTER_HOST` | IP o nombre de la impresora, sin `http://` ni puerto. |
 | `PANEL_URL` | Dirección pública del dashboard (se usa en los avisos para abrir la app). |
 | `TRUSTED_PROXIES` | IP del proxy inverso que tengas delante, separadas por comas. |

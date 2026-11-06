@@ -10,7 +10,7 @@ const PRINT_LABEL: Record<string, [string, string]> = {
   standby: ['Lista', 'ok'],
 };
 
-export function TopBar({ onSettings }: { onSettings: () => void }) {
+export function TopBar({ onSettings, name }: { onSettings: () => void; name: string }) {
   const { conn, status } = usePrinter();
   const klippy: string = status.webhooks?.state ?? '';
   const print: string = status.print_stats?.state ?? '';
@@ -27,7 +27,7 @@ export function TopBar({ onSettings }: { onSettings: () => void }) {
     <header className="topbar">
       <div className="brand">
         <span className="brand-icon"><Printer size={20} aria-hidden /></span>
-        K2<span className="brand-sub">Dashboard</span>
+        {name ? <span className="brand-name" title={name}>{name}</span> : <>K2<span className="brand-sub">Dashboard</span></>}
       </div>
       <div className="spacer" />
       {conn === 'open' && state[1] && (
