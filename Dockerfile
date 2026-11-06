@@ -7,7 +7,7 @@ COPY . .
 RUN npm test && npm run build
 
 # --- imagen final: nginx + Node en un solo contenedor ---
-FROM nginx:1.27-alpine
+FROM nginx:1.29-alpine
 RUN apk add --no-cache nodejs tzdata \
  && rm -f /etc/nginx/conf.d/default.conf
 COPY docker/nginx.conf /etc/nginx/conf.d/k2.conf
