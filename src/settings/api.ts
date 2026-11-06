@@ -1,6 +1,7 @@
 // Ajustes del dashboard (los guarda el servidor Node en /data/config.json).
 
 export interface Settings {
+  printerName: string;
   printerHost: string;
   panelUrl: string;
   trustedProxies: string[];

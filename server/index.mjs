@@ -10,7 +10,7 @@ import { promises as fsp, readFileSync, watchFile } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { hashPassword, makeLimiter, readCookie, signSession, verifyPassword, verifySession } from './lib/auth.mjs';
-import { configPath, DEFAULT_PASSWORD, DEFAULT_USER, loadConfig, nginxIncludes, publicView, pushView, saveConfig, validateCredentials, validateSettings } from './lib/config.mjs';
+import { configPath, DEFAULT_PASSWORD, DEFAULT_USER, displayName, loadConfig, nginxIncludes, publicView, pushView, saveConfig, validateCredentials, validateSettings } from './lib/config.mjs';
 import { isLanRequest, normalizeIp, originIp } from './lib/net.mjs';
 import { isValidSubscription, sendPush, vapidSubject } from './lib/webpush.mjs';
 import { Notifier } from './notifier.mjs';
@@ -96,7 +96,7 @@ async function broadcast(message, { urgency = 'normal', only } = {}) {
 const URGENCY = (priority) => (priority >= 4 ? 'high' : priority <= 2 ? 'low' : 'normal');
 
 const notifier = new Notifier((ev) => {
-  broadcast({ title: ev.title, body: ev.message || '', tag: `k2-${ev.id}`, url: cfg.settings.panelUrl || '/' }, { urgency: URGENCY(ev.priority) }).catch((e) =>
+  broadcast({ title: `${displayName(cfg.settings)}: ${ev.title}`, body: ev.message || '', tag: `k2-${ev.id}`, url: cfg.settings.panelUrl || '/' }, { urgency: URGENCY(ev.priority) }).catch((e) =>
     log('no se pudo notificar:', e.message),
   );
 });
@@ -196,16 +196,16 @@ async function handle(req, res) {
 
   // ---- inicio de sesión ----
   if (path === '/login' && method === 'GET') {
-    if (cfg.auth.mustChange && !isLan(req)) return html(res, 403, loginPage({ error: LAN_ONLY, iconDataUri }));
-    return html(res, 200, loginPage({ firstRun: cfg.auth.mustChange, iconDataUri }));
+    if (cfg.auth.mustChange && !isLan(req)) return html(res, 403, loginPage({ name: displayName(cfg.settings), error: LAN_ONLY, iconDataUri }));
+    return html(res, 200, loginPage({ name: displayName(cfg.settings), firstRun: cfg.auth.mustChange, iconDataUri }));
   }
 
   if (path === '/auth/login' && method === 'POST') {
     if (!sameOrigin(req)) return res.writeHead(403).end();
     const { origin: clientIp } = clientInfo(req);
     const now = Date.now();
-    if (cfg.auth.mustChange && !isLan(req)) return html(res, 403, loginPage({ error: LAN_ONLY, iconDataUri }));
-    if (limiter.blocked(clientIp, now)) return html(res, 429, loginPage({ error: 'Demasiados intentos. Espera 15 minutos.', iconDataUri }));
+    if (cfg.auth.mustChange && !isLan(req)) return html(res, 403, loginPage({ name: displayName(cfg.settings), error: LAN_ONLY, iconDataUri }));
+    if (limiter.blocked(clientIp, now)) return html(res, 429, loginPage({ name: displayName(cfg.settings), error: 'Demasiados intentos. Espera 15 minutos.', iconDataUri }));
     let form;
     try {
       form = new URLSearchParams(await readBody(req, 4096));
@@ -217,7 +217,7 @@ async function handle(req, res) {
     if (!ok) {
       limiter.fail(clientIp, now);
       log('login fallido desde', clientIp);
-      return html(res, 401, loginPage({ error: 'Usuario o contraseña incorrectos.', firstRun: cfg.auth.mustChange, iconDataUri }));
+      return html(res, 401, loginPage({ name: displayName(cfg.settings), error: 'Usuario o contraseña incorrectos.', firstRun: cfg.auth.mustChange, iconDataUri }));
     }
     limiter.reset(clientIp);
     log('login correcto desde', clientIp);
@@ -229,15 +229,15 @@ async function handle(req, res) {
   // ---- configuración inicial: cambiar admin / changeme ----
   if (path === '/setup' && method === 'GET') {
     if (!cfg.auth.mustChange) return redirect(res, '/');
-    if (!isLan(req)) return html(res, 403, loginPage({ error: LAN_ONLY, iconDataUri }));
+    if (!isLan(req)) return html(res, 403, loginPage({ name: displayName(cfg.settings), error: LAN_ONLY, iconDataUri }));
     if (!sessionUser(req)) return redirect(res, '/login');
-    return html(res, 200, setupPage({ iconDataUri }));
+    return html(res, 200, setupPage({ name: displayName(cfg.settings), iconDataUri }));
   }
 
   if (path === '/auth/setup' && method === 'POST') {
     if (!sameOrigin(req)) return res.writeHead(403).end();
     if (!cfg.auth.mustChange) return redirect(res, '/');
-    if (!isLan(req)) return html(res, 403, loginPage({ error: LAN_ONLY, iconDataUri }));
+    if (!isLan(req)) return html(res, 403, loginPage({ name: displayName(cfg.settings), error: LAN_ONLY, iconDataUri }));
     if (!sessionUser(req)) return redirect(res, '/login');
     let form;
     try {
@@ -246,7 +246,7 @@ async function handle(req, res) {
       return res.writeHead(400).end();
     }
     const v = validateCredentials(form.get('user'), form.get('password'), form.get('confirm') ?? '');
-    if (v.errors) return html(res, 400, setupPage({ errors: v.errors, user: form.get('user') ?? '', iconDataUri }));
+    if (v.errors) return html(res, 400, setupPage({ name: displayName(cfg.settings), errors: v.errors, user: form.get('user') ?? '', iconDataUri }));
     cfg = { ...cfg, auth: { user: v.user, hash: await hashPassword(v.password), mustChange: false, secret: randomBytes(32).toString('base64url') } };
     await saveConfig(DATA_DIR, cfg);
     log('administrador creado:', v.user);
@@ -321,7 +321,7 @@ async function handle(req, res) {
       const only = body.endpoint ? String(body.endpoint) : undefined;
       if (!cfg.push.subscriptions.some((x) => !only || x.endpoint === only)) return json(res, 400, { error: 'Este dispositivo no tiene los avisos activados.' });
       const r = await broadcast(
-        { title: 'Avisos de la K2 activados', body: 'Así te llegarán los avisos de la impresora.', tag: 'k2-test', url: cfg.settings.panelUrl || '/' },
+        { title: `Avisos de ${displayName(cfg.settings)} activados`, body: 'Así te llegarán los avisos de la impresora.', tag: 'k2-test', url: cfg.settings.panelUrl || '/' },
         { only },
       );
       if (!r.sent) return json(res, 502, { error: r.errors[0] ?? (r.removed ? 'La suscripción caducó; vuelve a activar los avisos.' : 'No se pudo enviar') });

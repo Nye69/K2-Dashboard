@@ -13,7 +13,7 @@ describe('primer arranque', () => {
     expect(cfg.auth.mustChange).toBe(true);
     expect(await verifyPassword('changeme', cfg.auth.hash)).toBe(true);
     expect(cfg.auth.secret.length).toBeGreaterThanOrEqual(32);
-    expect(cfg.settings).toEqual({ printerHost: '10.0.0.5', panelUrl: '', trustedProxies: ['10.0.0.1', '10.0.0.2'], pushContact: '' });
+    expect(cfg.settings).toEqual({ printerName: '', printerHost: '10.0.0.5', panelUrl: '', trustedProxies: ['10.0.0.1', '10.0.0.2'], pushContact: '' });
     expect(Buffer.from(cfg.push.vapid.publicKey, 'base64url')).toHaveLength(65);
     expect(cfg.push.subscriptions).toEqual([]);
     const files = (await readdir(dir)).sort();
@@ -44,19 +44,25 @@ describe('normalizePanelUrl', () => {
 });
 
 describe('settingsFromEnv', () => {
-  it('valores por defecto', () => expect(settingsFromEnv({})).toEqual({ printerHost: '', panelUrl: '', trustedProxies: [], pushContact: '' }));
+  it('valores por defecto', () => expect(settingsFromEnv({})).toEqual({ printerName: '', printerHost: '', panelUrl: '', trustedProxies: [], pushContact: '' }));
+  it('nombre desde el entorno', () => expect(settingsFromEnv({ PRINTER_NAME: '  Mi   K2 SE ' }).printerName).toBe('Mi K2 SE'));
   it('correo de contacto', () => expect(settingsFromEnv({ PUSH_CONTACT_EMAIL: ' yo@ejemplo.com ' }).pushContact).toBe('yo@ejemplo.com'));
 });
 
 describe('validateSettings', () => {
   it('limpia y acepta valores buenos', () => {
     expect(validateSettings({ printerHost: ' 192.168.1.50 ', panelUrl: 'https://k2.ejemplo.com/', trustedProxies: '192.168.1.10 10.0.0.0/8', pushContact: 'mailto:yo@ejemplo.com' })).toEqual({
-      settings: { printerHost: '192.168.1.50', panelUrl: 'https://k2.ejemplo.com', trustedProxies: ['192.168.1.10', '10.0.0.0/8'], pushContact: 'yo@ejemplo.com' },
+      settings: { printerName: '', printerHost: '192.168.1.50', panelUrl: 'https://k2.ejemplo.com', trustedProxies: ['192.168.1.10', '10.0.0.0/8'], pushContact: 'yo@ejemplo.com' },
     });
   });
   it('marca cada campo malo', () => {
-    const { errors } = validateSettings({ printerHost: 'http://x:7125', panelUrl: 'ftp://x', trustedProxies: 'proxy.local', pushContact: 'no-es-correo' });
-    expect(Object.keys(errors).sort()).toEqual(['panelUrl', 'printerHost', 'pushContact', 'trustedProxies']);
+    const { errors } = validateSettings({ printerName: 'x'.repeat(41), printerHost: 'http://x:7125', panelUrl: 'ftp://x', trustedProxies: 'proxy.local', pushContact: 'no-es-correo' });
+    expect(Object.keys(errors).sort()).toEqual(['panelUrl', 'printerHost', 'printerName', 'pushContact', 'trustedProxies']);
+  });
+  it('nombre de la impresora: limpia espacios, acepta tildes y emojis, rechaza < >', () => {
+    expect(validateSettings({ printerName: '  Impresora   de Billy 🖨️ ' }).settings.printerName).toBe('Impresora de Billy 🖨️');
+    expect(validateSettings({ printerName: 'Señora Ñandú' }).settings.printerName).toBe('Señora Ñandú');
+    expect(validateSettings({ printerName: '<script>' }).errors.printerName).toBeTruthy();
   });
   it('no deja inyectar directivas de nginx', () => {
     expect(validateSettings({ printerHost: '1.2.3.4"; include /etc/passwd; #' }).errors?.printerHost).toBeTruthy();
@@ -106,7 +112,7 @@ describe('publicView', () => {
     await writeFile(join(dir, 'config.json'), JSON.stringify(old));
     const cfg = await loadConfig(dir, {});
     expect(cfg.auth).toEqual(old.auth);
-    expect(cfg.settings).toEqual({ printerHost: '10.0.0.5', panelUrl: 'https://k2.ejemplo.com', trustedProxies: [], pushContact: '' });
+    expect(cfg.settings).toEqual({ printerName: '', printerHost: '10.0.0.5', panelUrl: 'https://k2.ejemplo.com', trustedProxies: [], pushContact: '' });
     expect(cfg.push.vapid.publicKey).toBeTruthy();
     const files = await readdir(dir);
     expect(files).toContain('config.json.migrado');
