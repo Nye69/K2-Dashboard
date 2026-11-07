@@ -1,9 +1,10 @@
 import * as GCodePreview from 'gcode-preview';
 import { Box, LoaderCircle, RotateCcw } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { Box3, Vector3, type Object3D } from 'three';
+import { Box3, Color, Vector3, type Object3D } from 'three';
 import { formatBytes } from '../lib/format';
 import { printedLayerIndex } from '../lib/layers';
+import { layerAtFilePosition, lineByteOffsets } from '../lib/filePosition';
 import { fetchWholeFile, fileMetadata } from '../moonraker/api';
 import { useInView } from '../lib/useInView';
 import { usePrinter } from '../moonraker/usePrinter';
@@ -39,6 +40,36 @@ function frameModel(v: GCodePreview.WebGLPreview) {
   v.renderer.render(v.scene, v.camera);
 }
 
+const GREEN = new Color('#22c55e').getHSL({ h: 0, s: 0, l: 0 });
+
+/**
+ * En modo líneas la librería aclara cada capa según la altura (luminosidad 10 %→80 %) y la parte de arriba sale
+ * casi blanca. Se reescala esa luminosidad a 16 %→42 %: se sigue notando la altura pero sin "quemarse".
+ * Solo toca los colores verdes (la capa actual amarilla se queda igual).
+ */
+function toneDownLines(v: GCodePreview.WebGLPreview) {
+  const group = (v as unknown as { group?: Object3D }).group;
+  if (!group || v.renderTubes) return;
+  const hsl = { h: 0, s: 0, l: 0 };
+  group.traverse((o) => {
+    const m = (o as unknown as { material?: { color?: Color } }).material;
+    const c = m?.color;
+    if (!c) return;
+    c.getHSL(hsl);
+    if (Math.abs(hsl.h - GREEN.h) > 0.04) return;
+    c.setHSL(hsl.h, Math.min(hsl.s, 0.75), 0.16 + ((Math.min(Math.max(hsl.l, 0.1), 0.8) - 0.1) / 0.7) * 0.26);
+  });
+}
+
+/** Dibuja y, si son líneas, baja el brillo. */
+function draw(v: GCodePreview.WebGLPreview) {
+  v.render();
+  if (!v.renderTubes) {
+    toneDownLines(v);
+    v.renderer.render(v.scene, v.camera);
+  }
+}
+
 type Phase = { kind: 'idle' } | { kind: 'ask'; size: number } | { kind: 'loading'; progress: number } | { kind: 'ready' } | { kind: 'error'; message: string };
 
 export function GcodeViewer({ path }: { path: string | null }) {
@@ -46,6 +77,9 @@ export function GcodeViewer({ path }: { path: string | null }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const sizeRef = useRef(0);
+  // Para saber qué capa del visor se está imprimiendo a partir del byte por el que va la impresora.
+  const offsetsRef = useRef<Uint32Array | null>(null);
+  const layerStartsRef = useRef<number[]>([]);
   const [inViewRef, visible] = useInView<HTMLElement>('100px');
   const preview = useRef<GCodePreview.WebGLPreview | null>(null);
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
@@ -56,7 +90,14 @@ export function GcodeViewer({ path }: { path: string | null }) {
   const [simplified, setSimplified] = useState(false);
 
   const printingThis = status.print_stats?.filename === path && ['printing', 'paused'].includes(status.print_stats?.state);
-  const printedLayer = printingThis && maxLayer > 0 ? printedLayerIndex(status.virtual_sdcard ?? {}, maxLayer) : null;
+  // Capa del visor que se está imprimiendo: por la posición en el archivo si se sabe (exacto), si no por proporción.
+  const filePos = Number(status.virtual_sdcard?.file_position) || 0;
+  const printedLayer =
+    printingThis && maxLayer > 0
+      ? filePos > 0 && offsetsRef.current && layerStartsRef.current.length
+        ? layerAtFilePosition(layerStartsRef.current, offsetsRef.current, filePos)
+        : printedLayerIndex(status.virtual_sdcard ?? {}, maxLayer)
+      : null;
 
   // Crear el visor una vez.
   useEffect(() => {
@@ -97,11 +138,13 @@ export function GcodeViewer({ path }: { path: string | null }) {
       v.renderTubes = text.length <= tubesLimit();
       setSimplified(!v.renderTubes);
       v.processGCode(text);
+      offsetsRef.current = lineByteOffsets(text);
+      layerStartsRef.current = v.layers.map((l) => l.lineNumber);
       const max = Math.max(0, v.layers.length - 1);
       setMaxLayer(max);
       setLayer(max);
       setFollow(false);
-      v.render();
+      draw(v);
       frameModel(v);
       setPhase({ kind: 'ready' });
     } catch (e) {
@@ -136,7 +179,7 @@ export function GcodeViewer({ path }: { path: string | null }) {
     if (!v || phase.kind !== 'ready') return;
     const t = setTimeout(() => {
       v.endLayer = shownLayer + 1;
-      v.render();
+      draw(v);
     }, 80);
     return () => clearTimeout(t);
   }, [shownLayer, phase.kind]);

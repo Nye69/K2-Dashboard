@@ -76,6 +76,9 @@ ${body}
       pw.focus();
     });
   });
+  // Si el navegador muestra esta página desde su caché al ir "atrás", pedirla de nuevo:
+  // con sesión abierta el servidor redirige al panel.
+  window.addEventListener('pageshow', (e) => { if (e.persisted) location.reload(); });
   // Al enviar, nunca dejar contraseñas visibles si la página vuelve.
   document.querySelector('form').addEventListener('submit', (e) => e.target.querySelectorAll('.pw input').forEach((i) => (i.type = 'password')));
 </script>

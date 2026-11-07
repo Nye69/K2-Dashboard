@@ -7,7 +7,7 @@ Va en **un solo contenedor Docker**: nginx sirve la app y hace de proxy hacia la
 ## Qué hace
 
 - **Impresión en curso**: progreso, capa, tiempo restante (el mismo que calcula la impresora), pausar, reanudar, cancelar y **cancelar una sola pieza** (también con archivos de Cura: el panel los prepara al subirlos).
-- **Archivos**: subir G-code (también arrastrando), miniaturas, imprimir, borrar y buscar.
+- **Archivos**: subir G-code (también arrastrando), miniaturas, imprimir (con o sin calibrar la cama antes), renombrar, borrar y buscar. Y un botón para solo calibrar.
 - **Vista 3D del G-code**, con la capa que se está imprimiendo.
 - **Temperaturas** con gráfica, y precalentado para PLA, PETG, ABS y TPU.
 - **Control**: luz, ventiladores, **modos de velocidad como en Creality Print** (Silencioso, Estable 50 %, Estándar 100 %, Ultrarrápido 125 %), velocidad exacta, flujo, sacar y meter filamento, y mover el filamento unos milímetros.

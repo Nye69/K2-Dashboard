@@ -1,7 +1,9 @@
 import { Check, Clock, Eye, FolderOpen, Layers, LoaderCircle, Pencil, Play, RefreshCw, Search, Trash2, Upload, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatBytes, formatDate, formatDuration } from '../lib/format';
-import { deleteFile, listFiles, renameFile, startPrint, uploadFile, type GcodeFile } from '../moonraker/api';
+import { deleteFile, listFiles, renameFile, runGcode, startPrint, uploadFile, type GcodeFile } from '../moonraker/api';
+import { calibrateThenPrintScript } from '../lib/calibration';
+import { PrintDialog } from './PrintDialog';
 import { renameTarget, splitName } from '../lib/rename';
 import { labelCuraObjects } from '../lib/labelObjects';
 import { usePrinter } from '../moonraker/usePrinter';
@@ -40,10 +42,17 @@ export function FilesCard({ viewerPath, onView }: { viewerPath: string | null; o
   const [over, setOver] = useState(false);
   const [actionError, setActionError] = useState('');
   const [notice, setNotice] = useState('');
+  const [printTarget, setPrintTarget] = useState<string | null>(null);
+  const [calibrating, setCalibrating] = useState<string | null>(null);
+
   const input = useRef<HTMLInputElement>(null);
 
   const state: string = status.print_stats?.state ?? 'standby';
   const busyPrinting = state === 'printing' || state === 'paused';
+  // El aviso de "calibrando" se quita cuando la impresión ya empezó.
+  useEffect(() => {
+    if (calibrating && (state === 'printing' || state === 'error')) setCalibrating(null);
+  }, [calibrating, state]);
 
   const refresh = useCallback(async () => {
     try {
@@ -83,15 +92,25 @@ export function FilesCard({ viewerPath, onView }: { viewerPath: string | null; o
     }
   };
 
-  const doPrint = async (f: GcodeFile) => {
-    const ok = await confirm({ title: '¿Imprimir este archivo?', message: f.path, confirmLabel: 'Imprimir' });
-    if (!ok) return;
-    try {
-      setActionError('');
-      await startPrint(f.path);
-    } catch (e) {
-      setActionError((e as Error).message);
+  const doPrint = (f: GcodeFile) => setPrintTarget(f.path);
+
+  const confirmPrint = async (path: string, calibrate: boolean) => {
+    setPrintTarget(null);
+    setActionError('');
+    if (!calibrate) {
+      try {
+        await startPrint(path);
+      } catch (e) {
+        setActionError((e as Error).message);
+      }
+      return;
     }
+    // La orden tarda lo que dure la calibración; la impresión arranca sola al terminar (en la impresora).
+    setCalibrating(path);
+    runGcode(calibrateThenPrintScript(path)).catch((e) => {
+      setCalibrating(null);
+      setActionError(`No se pudo calibrar: ${(e as Error).message}`);
+    });
   };
 
   /** Devuelve un mensaje de error, o null si salió bien. */
@@ -186,6 +205,12 @@ export function FilesCard({ viewerPath, onView }: { viewerPath: string | null; o
         </div>
       ))}
 
+      {calibrating && (
+        <div className="alert warn" role="status" style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <LoaderCircle size={16} className="spin" aria-hidden />
+          <span>Calibrando la cama antes de imprimir {calibrating}. Tarda unos minutos; la impresión empezará sola.</span>
+        </div>
+      )}
       {notice && (
         <div className="alert ok" role="status" style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ flex: 1 }}>{notice}</span>
@@ -206,7 +231,7 @@ export function FilesCard({ viewerPath, onView }: { viewerPath: string | null; o
               key={f.path}
               file={f}
               active={viewerPath === f.path}
-              canPrint={conn === 'open' && !busyPrinting}
+              canPrint={conn === 'open' && !busyPrinting && !calibrating}
               isPrinting={busyPrinting && status.print_stats?.filename === f.path}
               onPrint={() => doPrint(f)}
               onView={() => onView(f.path)}
@@ -216,6 +241,7 @@ export function FilesCard({ viewerPath, onView }: { viewerPath: string | null; o
           ))}
         </div>
       )}
+      {printTarget && <PrintDialog file={printTarget} onCancel={() => setPrintTarget(null)} onPrint={(cal) => confirmPrint(printTarget, cal)} />}
     </section>
   );
 }

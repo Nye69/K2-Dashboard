@@ -180,6 +180,11 @@ const html = (res, status, body) => res.writeHead(status, { 'Content-Type': 'tex
 const json = (res, status, body, headers = {}) => res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers }).end(JSON.stringify(body));
 const redirect = (res, to, headers = {}) => res.writeHead(303, { Location: to, ...headers }).end();
 
+const LOGIN_ERRORS = {
+  bad: 'Usuario o contraseña incorrectos.',
+  rate: 'Demasiados intentos. Espera 15 minutos.',
+};
+
 const LAN_ONLY = 'La configuración inicial solo se puede hacer desde la red local. Entra con la IP del servidor estando en casa.';
 
 async function handle(req, res) {
@@ -196,7 +201,12 @@ async function handle(req, res) {
 
   // ---- inicio de sesión ----
   if (path === '/login' && method === 'GET') {
+    // Con sesión válida no se enseña el login: así el gesto de "atrás" del iPhone (deslizar desde la izquierda)
+    // no deja a nadie en la pantalla de entrar con el panel ya abierto.
+    if (!cfg.auth.mustChange && sessionUser(req)) return redirect(res, '/');
     if (cfg.auth.mustChange && !isLan(req)) return html(res, 403, loginPage({ name: displayName(cfg.settings), error: LAN_ONLY, iconDataUri }));
+    const e = url.searchParams.get('e');
+    if (e) return html(res, 200, loginPage({ name: displayName(cfg.settings), error: LOGIN_ERRORS[e] ?? LOGIN_ERRORS.bad, firstRun: cfg.auth.mustChange, iconDataUri }));
     return html(res, 200, loginPage({ name: displayName(cfg.settings), firstRun: cfg.auth.mustChange, iconDataUri }));
   }
 
@@ -205,7 +215,7 @@ async function handle(req, res) {
     const { origin: clientIp } = clientInfo(req);
     const now = Date.now();
     if (cfg.auth.mustChange && !isLan(req)) return html(res, 403, loginPage({ name: displayName(cfg.settings), error: LAN_ONLY, iconDataUri }));
-    if (limiter.blocked(clientIp, now)) return html(res, 429, loginPage({ name: displayName(cfg.settings), error: 'Demasiados intentos. Espera 15 minutos.', iconDataUri }));
+    if (limiter.blocked(clientIp, now)) return redirect(res, '/login?e=rate');
     let form;
     try {
       form = new URLSearchParams(await readBody(req, 4096));
@@ -217,7 +227,7 @@ async function handle(req, res) {
     if (!ok) {
       limiter.fail(clientIp, now);
       log('login fallido desde', clientIp);
-      return html(res, 401, loginPage({ name: displayName(cfg.settings), error: 'Usuario o contraseña incorrectos.', firstRun: cfg.auth.mustChange, iconDataUri }));
+      return redirect(res, '/login?e=bad');
     }
     limiter.reset(clientIp);
     log('login correcto desde', clientIp);

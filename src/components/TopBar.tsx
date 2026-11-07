@@ -1,4 +1,4 @@
-import { LoaderCircle, LogOut, Printer, Settings, Wifi, WifiOff } from 'lucide-react';
+import { LoaderCircle, LogOut, Printer, RotateCw, Settings, Wifi, WifiOff } from 'lucide-react';
 import { usePrinter } from '../moonraker/usePrinter';
 
 const PRINT_LABEL: Record<string, [string, string]> = {
@@ -40,6 +40,10 @@ export function TopBar({ onSettings, name }: { onSettings: () => void; name: str
       ) : (
         <span className="pill err"><WifiOff size={14} aria-hidden />Sin conexión</span>
       )}
+      {/* La app instalada en el móvil no tiene botón de recargar: este hace lo mismo. */}
+      <button className="icon-btn" onClick={() => location.reload()} aria-label="Recargar" title="Recargar">
+        <RotateCw size={18} />
+      </button>
       <button className="icon-btn" onClick={onSettings} aria-label="Ajustes" title="Ajustes">
         <Settings size={18} />
       </button>
