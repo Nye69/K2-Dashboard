@@ -12,6 +12,9 @@ import { usePrinter } from '../moonraker/usePrinter';
 const AUTOLOAD_BYTES = 8 * 1024 * 1024;
 const BUILD = { x: 260, y: 260, z: 260 };
 
+/** Hasta este tamaño de G-code se dibuja con tubos iluminados; más grande, con líneas (más ligero). */
+const tubesLimit = () => (window.matchMedia('(pointer: coarse)').matches ? 4 : 10) * 1024 * 1024;
+
 /** Apunta la cámara al centro del modelo y la aleja lo justo para que quepa entero. */
 function frameModel(v: GCodePreview.WebGLPreview) {
   const group = (v as unknown as { group?: Object3D }).group;
@@ -50,6 +53,7 @@ export function GcodeViewer({ path }: { path: string | null }) {
   const [layer, setLayer] = useState(0);
   // Por defecto se ve el modelo entero; "solo lo impreso" es opcional (al principio de una impresión casi no se ve nada).
   const [follow, setFollow] = useState(false);
+  const [simplified, setSimplified] = useState(false);
 
   const printingThis = status.print_stats?.filename === path && ['printing', 'paused'].includes(status.print_stats?.state);
   const printedLayer = printingThis && maxLayer > 0 ? printedLayerIndex(status.virtual_sdcard ?? {}, maxLayer) : null;
@@ -61,7 +65,8 @@ export function GcodeViewer({ path }: { path: string | null }) {
       canvas: canvasRef.current,
       buildVolume: BUILD,
       backgroundColor: '#161616',
-      extrusionColor: '#4ade80',
+      extrusionColor: '#22c55e',
+      extrusionWidth: 0.45,
       topLayerColor: '#facc15',
       travelColor: '#4a4a4a',
       renderTravel: false,
@@ -86,6 +91,11 @@ export function GcodeViewer({ path }: { path: string | null }) {
       v.clear();
       v.startLayer = undefined;
       v.endLayer = undefined;
+      // Tubos con luz: se ve como la pieza real. Con líneas, la librería aclara cada capa según la altura
+      // (de 10 % a 80 % de luminosidad) y la parte de arriba sale casi blanca, "quemada".
+      // Los tubos pesan el doble: en archivos muy grandes (y antes en el móvil) se usan líneas.
+      v.renderTubes = text.length <= tubesLimit();
+      setSimplified(!v.renderTubes);
       v.processGCode(text);
       const max = Math.max(0, v.layers.length - 1);
       setMaxLayer(max);
@@ -198,6 +208,7 @@ export function GcodeViewer({ path }: { path: string | null }) {
           )}
         </div>
       )}
+      {phase.kind === 'ready' && simplified && <div className="viewer-note">Vista simplificada por el tamaño del archivo.</div>}
       {phase.kind === 'ready' && printedLayer != null && (
         <div className="viewer-printing">
           Imprimiendo este archivo
