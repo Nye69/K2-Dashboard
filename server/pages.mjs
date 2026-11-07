@@ -28,7 +28,7 @@ function shell({ title, iconDataUri, body, appTitle = 'K2' }) {
   return `<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0b1120">
+<meta name="theme-color" content="#121212">
 <link rel="manifest" href="/manifest.webmanifest">
 ${touchIcon}
 <link rel="icon" href="/icons/favicon-64.png">
@@ -39,25 +39,25 @@ ${touchIcon}
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
   body { margin: 0; min-height: 100dvh; display: grid; place-items: center; padding: 16px;
-    background: #0b1120; color: #f1f5f9; font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
-  form { width: min(380px, 100%); background: #131c2e; border: 1px solid #2a3650; border-radius: 14px; padding: 24px; display: grid; gap: 14px; }
+    background: #121212; color: #f5f5f5; font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+  form { width: min(380px, 100%); background: #1e1e1e; border: 1px solid #333333; border-radius: 14px; padding: 24px; display: grid; gap: 14px; }
   .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 22px; margin-bottom: 4px; }
   .brand img { width: 40px; height: 40px; border-radius: 10px; }
-  p { margin: 0; color: #a5b1c4; font-size: 14px; }
-  label { display: grid; gap: 6px; font-size: 14px; color: #a5b1c4; }
-  input { height: 48px; padding: 0 12px; border-radius: 10px; border: 1px solid #2a3650; background: #0b1120; color: inherit; font-size: 16px; width: 100%; }
+  p { margin: 0; color: #b3b3b3; font-size: 14px; }
+  label { display: grid; gap: 6px; font-size: 14px; color: #b3b3b3; }
+  input { height: 48px; padding: 0 12px; border-radius: 10px; border: 1px solid #333333; background: #121212; color: inherit; font-size: 16px; width: 100%; }
   input[aria-invalid="true"] { border-color: #ef4444; }
   input:focus-visible, button:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }
   button[type=submit] { height: 48px; border: 0; border-radius: 10px; background: #22c55e; color: #052e14; font-weight: 700; font-size: 16px; cursor: pointer; }
   button[type=submit]:active { transform: scale(.98); }
   .pw { position: relative; display: block; }
   .pw input { padding-right: 52px; }
-  .eye { position: absolute; right: 2px; top: 2px; width: 44px; height: 44px; border: 0; background: transparent; color: #a5b1c4;
+  .eye { position: absolute; right: 2px; top: 2px; width: 44px; height: 44px; border: 0; background: transparent; color: #b3b3b3;
     display: grid; place-items: center; border-radius: 8px; cursor: pointer; }
-  .eye:hover { color: #f1f5f9; background: #1b2539; }
+  .eye:hover { color: #f5f5f5; background: #2a2a2a; }
   .eye svg[hidden] { display: none; }
   .err { background: #2a1012; border: 1px solid #5f1d22; color: #fca5a5; border-radius: 10px; padding: 10px 12px; font-size: 14px; }
-  .info { background: #10213a; border: 1px solid #1e3a66; color: #bfdbfe; border-radius: 10px; padding: 10px 12px; font-size: 14px; }
+  .info { background: #262626; border: 1px solid #3a3a3a; color: #e5e5e5; border-radius: 10px; padding: 10px 12px; font-size: 14px; }
   .field-err { color: #fca5a5; font-size: 13px; }
 </style></head>
 <body>
