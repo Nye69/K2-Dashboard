@@ -60,10 +60,10 @@ export function GcodeViewer({ path }: { path: string | null }) {
     const p = GCodePreview.init({
       canvas: canvasRef.current,
       buildVolume: BUILD,
-      backgroundColor: '#0a0f1b',
+      backgroundColor: '#161616',
       extrusionColor: '#4ade80',
       topLayerColor: '#facc15',
-      travelColor: '#334155',
+      travelColor: '#4a4a4a',
       renderTravel: false,
       initialCameraPosition: [0, 320, 380],
     });

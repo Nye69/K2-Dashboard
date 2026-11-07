@@ -29,12 +29,12 @@ export function TempChart({ history }: { history: TempSample[] }) {
       >
         {ticks.map((v) => (
           <g key={v}>
-            <line x1={PAD.l} x2={W - PAD.r} y1={y(v)} y2={y(v)} stroke="#253049" strokeWidth={1} vectorEffect="non-scaling-stroke" />
-            <text x={PAD.l - 6} y={y(v) + 4} textAnchor="end" fontSize={11} fill="#7b8799">{v}°</text>
+            <line x1={PAD.l} x2={W - PAD.r} y1={y(v)} y2={y(v)} stroke="#333333" strokeWidth={1} vectorEffect="non-scaling-stroke" />
+            <text x={PAD.l - 6} y={y(v) + 4} textAnchor="end" fontSize={11} fill="#8a8a8a">{v}°</text>
           </g>
         ))}
-        <text x={PAD.l} y={H - 4} fontSize={11} fill="#7b8799">-10 min</text>
-        <text x={W - PAD.r} y={H - 4} fontSize={11} fill="#7b8799" textAnchor="end">ahora</text>
+        <text x={PAD.l} y={H - 4} fontSize={11} fill="#8a8a8a">-10 min</text>
+        <text x={W - PAD.r} y={H - 4} fontSize={11} fill="#8a8a8a" textAnchor="end">ahora</text>
         <polyline points={line('nozzleTarget')} fill="none" stroke="var(--nozzle)" strokeOpacity={0.5} strokeDasharray="5 4" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
         <polyline points={line('bedTarget')} fill="none" stroke="var(--bed)" strokeOpacity={0.5} strokeDasharray="5 4" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
         <polyline points={line('nozzle')} fill="none" stroke="var(--nozzle)" strokeWidth={2.5} vectorEffect="non-scaling-stroke" />

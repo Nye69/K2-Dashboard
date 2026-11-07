@@ -18,6 +18,8 @@ const OBJECTS: Record<string, null | string[]> = {
   'output_pin fan2': null,
   gcode_move: ['speed_factor', 'extrude_factor'],
   exclude_object: null,
+  // Modo silencioso de la K2 (macro QMODE): flag = 1 cuando está activo.
+  'gcode_macro Qmode': ['flag'],
   ...Object.fromEntries(SENSORS.map((s) => [s, null])),
 };
 

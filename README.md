@@ -10,7 +10,7 @@ Va en **un solo contenedor Docker**: nginx sirve la app y hace de proxy hacia la
 - **Archivos**: subir G-code (también arrastrando), miniaturas, imprimir, borrar y buscar.
 - **Vista 3D del G-code**, con la capa que se está imprimiendo.
 - **Temperaturas** con gráfica, y precalentado para PLA, PETG, ABS y TPU.
-- **Control**: luz, ventiladores, velocidad, flujo, sacar y meter filamento, y mover el filamento unos milímetros.
+- **Control**: luz, ventiladores, **modos de velocidad como en Creality Print** (Silencioso, Estable 50 %, Estándar 100 %, Ultrarrápido 125 %), velocidad exacta, flujo, sacar y meter filamento, y mover el filamento unos milímetros.
 - **Historial** de impresiones.
 - **Notificaciones push** al móvil y al ordenador cuando una impresión empieza, termina, falla, se pausa o se acaba el filamento. Las manda la propia app, sin servicios ni apps extra.
 - **Inicio de sesión propio** (funciona bien en iPhone, también con websockets) y **app instalable** (PWA).

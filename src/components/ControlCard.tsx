@@ -1,6 +1,7 @@
 import { ArrowDownToLine, ArrowUpFromLine, ChevronRight, ChevronsDown, ChevronsUp, Fan, Flame, Gauge, Lightbulb, LightbulbOff, LoaderCircle, SlidersHorizontal, Snowflake, Waves } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { extrudeScript } from '../lib/extrude';
+import { currentSpeedMode, SPEED_MODES, speedModeScript } from '../lib/speedMode';
 import { runGcode, setTemp } from '../moonraker/api';
 
 import { usePrinter } from '../moonraker/usePrinter';
@@ -27,6 +28,8 @@ export function ControlCard() {
   const light = (status['output_pin LED']?.value ?? 0) > 0;
   const canExtrude = !!status.extruder?.can_extrude;
   const [amount, setAmount] = useState(10);
+  const qmode = Number(status['gcode_macro Qmode']?.flag ?? 0) === 1;
+  const speedMode = currentSpeedMode(status.gcode_move?.speed_factor, status['gcode_macro Qmode']?.flag);
 
   const run = async (key: string, script: string | (() => Promise<unknown>)) => {
     setError('');
@@ -71,6 +74,27 @@ export function ControlCard() {
         </button>
       </div>
 
+      <div className="subhead" style={{ marginTop: 4 }}>Velocidad de impresión</div>
+      <div className="speed-modes" role="radiogroup" aria-label="Velocidad de impresión">
+        {SPEED_MODES.map((m) => {
+          const onlyPrinting = m.id === 'silent' && !printing;
+          return (
+            <button
+              key={m.id}
+              role="radio"
+              aria-checked={speedMode === m.id}
+              className={`speed-mode ${speedMode === m.id ? 'on' : ''}`}
+              disabled={offline || onlyPrinting || busy === 'speedmode'}
+              title={onlyPrinting ? 'Solo mientras imprime: baja aceleración, velocidad y ventiladores para hacer menos ruido' : undefined}
+              onClick={() => speedMode !== m.id && run('speedmode', speedModeScript(m.id, qmode))}
+            >
+              {m.label}
+              {m.pct ? <span className="num"> {m.pct}%</span> : null}
+            </button>
+          );
+        })}
+      </div>
+
       <div className="controls">
         <Slider
           icon={<Fan size={16} />}
@@ -94,12 +118,11 @@ export function ControlCard() {
         />
         <Slider
           icon={<Gauge size={16} />}
-          label="Velocidad"
+          label="Velocidad exacta"
           value={Math.round((status.gcode_move?.speed_factor ?? 1) * 100)}
           min={10}
           max={300}
           unit="%"
-          marks={[50, 100, 150]}
           disabled={offline}
           onCommit={(v) => run('speed', `M220 S${v}`)}
         />

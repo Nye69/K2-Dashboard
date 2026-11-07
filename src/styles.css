@@ -1,12 +1,12 @@
 :root {
-  --bg: #0b1120;
-  --surface: #131c2e;
-  --surface-2: #1b2539;
-  --surface-3: #243049;
-  --border: #2a3650;
-  --text: #f1f5f9;
-  --text-2: #a5b1c4;
-  --text-3: #7b8799;
+  --bg: #121212;
+  --surface: #1e1e1e;
+  --surface-2: #2a2a2a;
+  --surface-3: #383838;
+  --border: #333333;
+  --text: #f5f5f5;
+  --text-2: #b3b3b3;
+  --text-3: #8a8a8a;
   --accent: #22c55e;
   --accent-ink: #052e14;
   --primary: #3b82f6;
@@ -226,7 +226,7 @@ button, input { font: inherit; color: inherit; }
 .viewer { display: flex; flex-direction: column; height: 100%; }
 .viewer-stage {
   position: relative; flex: 1; min-height: 320px; border-radius: var(--radius-sm);
-  background: #0a0f1b; overflow: hidden;
+  background: #161616; overflow: hidden;
 }
 @media (min-width: 960px) { .viewer-stage { min-height: 460px; max-height: 72vh; } }
 .viewer-stage canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; touch-action: none; }
@@ -378,3 +378,12 @@ button, input { font: inherit; color: inherit; }
 .rename-ext { color: var(--text-3); font-size: 13px; flex: none; }
 .rename .icon-btn { width: 36px; height: 36px; flex: none; }
 .brand-name { min-width: 0; max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Modos de velocidad (como Creality Print) */
+.speed-modes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 4px; margin-bottom: 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 999px; }
+.speed-mode { min-height: 44px; padding: 4px 6px; border: 0; border-radius: 999px; background: transparent; color: var(--text); font-size: 14px; font-weight: 500; cursor: pointer; line-height: 1.2; transition: background .15s, color .15s; }
+.speed-mode:hover:not(:disabled):not(.on) { background: var(--surface-3); }
+.speed-mode.on { background: var(--surface-3); color: var(--accent); font-weight: 600; }
+.speed-mode:disabled:not(.on) { opacity: .4; cursor: not-allowed; }
+.speed-mode:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+@media (max-width: 480px) { .speed-modes { grid-template-columns: repeat(2, minmax(0, 1fr)); border-radius: var(--radius-sm); } .speed-mode { border-radius: 8px; } }
