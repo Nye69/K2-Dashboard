@@ -1,6 +1,7 @@
-import { ArrowDownToLine, ArrowUpFromLine, ChevronRight, ChevronsDown, ChevronsUp, Fan, Flame, Gauge, Lightbulb, LightbulbOff, LoaderCircle, SlidersHorizontal, Snowflake, Waves } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpFromLine, ChevronRight, ChevronsDown, ChevronsUp, Crosshair, Fan, Flame, Gauge, Lightbulb, LightbulbOff, LoaderCircle, SlidersHorizontal, Snowflake, Waves } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { extrudeScript } from '../lib/extrude';
+import { CALIBRATE_GCODE } from '../lib/calibration';
 import { currentSpeedMode, SPEED_MODES, speedModeScript } from '../lib/speedMode';
 import { runGcode, setTemp } from '../moonraker/api';
 
@@ -41,6 +42,15 @@ export function ControlCard() {
     } finally {
       setBusy(null);
     }
+  };
+
+  const calibrate = async () => {
+    const ok = await confirm({
+      title: '¿Calibrar la cama?',
+      message: 'La cama tiene que estar vacía. La impresora la calienta, limpia la boquilla y mide 49 puntos. Tarda unos minutos.',
+      confirmLabel: 'Calibrar',
+    });
+    if (ok) run('calib', CALIBRATE_GCODE);
   };
 
   const heat = (p: (typeof PRESETS)[number]) =>
@@ -182,6 +192,12 @@ export function ControlCard() {
       </div>
       <button className="btn" style={{ marginTop: 8, width: '100%' }} disabled={offline || printing || busy === 'off'} onClick={() => run('off', () => Promise.all([setTemp('extruder', 0), setTemp('heater_bed', 0)]))}>
         <Snowflake size={16} aria-hidden />Apagar calor
+      </button>
+
+      <div className="subhead">Calibración</div>
+      <button className="btn" style={{ width: '100%' }} disabled={offline || printing || !!busy} onClick={calibrate}>
+        {busy === 'calib' ? <LoaderCircle size={16} className="spin" aria-hidden /> : <Crosshair size={16} aria-hidden />}
+        {busy === 'calib' ? 'Calibrando la cama…' : 'Calibrar cama'}
       </button>
 
       <details className="fine">

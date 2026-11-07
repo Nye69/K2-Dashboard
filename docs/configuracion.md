@@ -79,3 +79,9 @@ Si imprimes varias piezas a la vez y una sale mal, en la tarjeta de impresión a
 - Los archivos de Cura subidos por otra vía (desde la propia Cura, una USB…) o antes de esta función no tienen las marcas. Vuelve a subirlos desde el panel.
 - Con una sola pieza no aparece la lista: para eso está **Parar**.
 
+## Calibrar la cama
+
+- **Al imprimir**: en la ventana de imprimir, marca **Calibrar la cama antes**. La impresora ejecuta su macro `G29`: calienta, hace home, limpia la boquilla, mide 7×7 puntos y guarda la malla. Después empieza la impresión sola. Todo va en una sola orden, así que sigue aunque cierres la app.
+- **Solo calibrar**: en **Control → Calibración → Calibrar cama**. La cama tiene que estar vacía.
+- Si no marcas la opción, la K2 usa la última malla guardada. Su `START_PRINT` no calibra en cada impresión.
+
