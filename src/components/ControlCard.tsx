@@ -172,7 +172,7 @@ export function ControlCard() {
           </span>
         </button>
       </div>
-      <div className="hint">Es lo mismo que Retract y Extrude en la pantalla de la impresora. No hace falta precalentar.</div>
+      <div className="hint">Son los mismos que Retract y Extrude de la pantalla de la impresora: calientan la boquilla ellos solos, no tienes que precalentar antes.</div>
 
       <div className="subhead">Precalentar</div>
       <div className="presets" role="group" aria-label="Precalentar">
