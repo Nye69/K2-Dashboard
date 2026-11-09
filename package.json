@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "gcode-preview": "^2.18.0",
-    "lucide-react": "^1.69.0",
+    "lucide-react": "^1.70.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "three": "^0.187.0"
