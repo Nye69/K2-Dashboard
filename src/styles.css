@@ -208,6 +208,19 @@ button, input { font: inherit; color: inherit; }
 .object .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .object.current .name { color: var(--accent); font-weight: 600; }
 .object.excluded .name { color: var(--text-3); text-decoration: line-through; }
+.object { cursor: default; transition: background-color 150ms ease, box-shadow 150ms ease; }
+.object.focused { background: var(--surface-3); box-shadow: inset 3px 0 0 #facc15; }
+
+/* Mapa de la cama con las piezas (visto desde arriba, frente abajo) */
+.bed-map { display: block; width: 100%; max-width: 220px; margin: 2px auto 6px; }
+.bed-map-bed { fill: var(--bg); stroke: var(--border); stroke-width: 1; }
+.bed-map-front { stroke: var(--accent); stroke-width: 1.5; }
+.bed-map-label { fill: var(--accent); font-size: 9px; font-weight: 600; letter-spacing: .5px; }
+.bed-map-obj { fill: rgba(34, 197, 94, .28); stroke: var(--accent); stroke-width: 1; cursor: pointer; transition: fill 150ms ease, stroke 150ms ease; }
+.bed-map-obj.current { fill: rgba(34, 197, 94, .5); }
+.bed-map-obj.excluded { fill: transparent; stroke: var(--text-3); stroke-dasharray: 3 2; }
+.bed-map-obj.focused { fill: rgba(250, 204, 21, .55); stroke: #facc15; stroke-width: 2; }
+@media (prefers-reduced-motion: reduce) { .object, .bed-map-obj { transition: none; } }
 
 /* ---------- history ---------- */
 .history { display: grid; gap: 6px; }

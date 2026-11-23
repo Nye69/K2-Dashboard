@@ -1,8 +1,9 @@
 import * as GCodePreview from 'gcode-preview';
 import { Box, LoaderCircle, RotateCcw } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { Box3, BufferGeometry, CanvasTexture, Color, DoubleSide, Group, Line, LineBasicMaterial, Mesh, MeshBasicMaterial, PlaneGeometry, Vector3, type Object3D } from 'three';
+import { Box3, BufferGeometry, CanvasTexture, Float32BufferAttribute, Color, DoubleSide, Group, Line, LineBasicMaterial, LineSegments, Mesh, MeshBasicMaterial, PlaneGeometry, Vector3, type Object3D } from 'three';
 import { bedFromGcode, K2_SE_BED, type Bed } from '../lib/bed';
+import { objectOutline, useFocusedObject, type BedObject } from '../lib/objectFocus';
 import { formatBytes } from '../lib/format';
 import { printedLayerIndex } from '../lib/layers';
 import { layerAtFilePosition, lineByteOffsets } from '../lib/filePosition';
@@ -102,15 +103,79 @@ function makeFrontMarker(bed: Bed, label: string): { group: Group; dispose: () =
   };
 }
 
+/** Pasa un punto del G-code (mm) a la escena: la librería pone el área imprimible centrada en el origen. */
+const toWorld = (bed: Bed, x: number, y: number, h: number) => new Vector3(x - bed.minX - bed.x / 2, h, -(y - bed.minY) + bed.y / 2);
+
+/**
+ * Caja amarilla alrededor de una pieza (la señalada en la lista de piezas): aristas, paredes semitransparentes y suelo.
+ * Un poco más grande que la pieza para que no quede escondida detrás de ella.
+ */
+function makeHighlight(poly: number[][], bed: Bed, height: number): { group: Group; dispose: () => void } {
+  const group = new Group();
+  const color = '#facc15';
+  const PAD = 2.5;
+  const top = Math.max(height, 1) + 2;
+  const cx = poly.reduce((a, p) => a + p[0], 0) / poly.length;
+  const cy = poly.reduce((a, p) => a + p[1], 0) / poly.length;
+  const padded = poly.map(([x, y]) => {
+    const d = Math.hypot(x - cx, y - cy) || 1;
+    return [x + ((x - cx) / d) * PAD, y + ((y - cy) / d) * PAD];
+  });
+  const low = padded.map(([x, y]) => toWorld(bed, x, y, 0.4));
+  const high = padded.map(([x, y]) => toWorld(bed, x, y, top));
+  const pts: Vector3[] = [];
+  for (let i = 0; i < poly.length; i++) {
+    const j = (i + 1) % poly.length;
+    pts.push(low[i], low[j], high[i], high[j], low[i], high[i]);
+  }
+  const edgeGeo = new BufferGeometry().setFromPoints(pts);
+  const edgeMat = new LineBasicMaterial({ color });
+  group.add(new LineSegments(edgeGeo, edgeMat));
+  // Suelo: triángulos en abanico desde el centro (los contornos de Klipper son convexos).
+  const c = low.reduce((a, p) => a.add(p), new Vector3()).divideScalar(low.length);
+  const tri: number[] = [];
+  for (let i = 0; i < low.length; i++) {
+    const a = low[i];
+    const b = low[(i + 1) % low.length];
+    tri.push(c.x, c.y, c.z, a.x, a.y, a.z, b.x, b.y, b.z);
+  }
+  const fillGeo = new BufferGeometry();
+  fillGeo.setAttribute('position', new Float32BufferAttribute(tri, 3));
+  const fillMat = new MeshBasicMaterial({ color, transparent: true, opacity: 0.45, side: DoubleSide, depthWrite: false });
+  group.add(new Mesh(fillGeo, fillMat));
+  // Paredes: dos triángulos por lado.
+  const wall: number[] = [];
+  for (let i = 0; i < low.length; i++) {
+    const j = (i + 1) % low.length;
+    for (const p of [low[i], low[j], high[j], low[i], high[j], high[i]]) wall.push(p.x, p.y, p.z);
+  }
+  const wallGeo = new BufferGeometry();
+  wallGeo.setAttribute('position', new Float32BufferAttribute(wall, 3));
+  const wallMat = new MeshBasicMaterial({ color, transparent: true, opacity: 0.16, side: DoubleSide, depthWrite: false });
+  group.add(new Mesh(wallGeo, wallMat));
+  return {
+    group,
+    dispose: () => {
+      edgeGeo.dispose();
+      edgeMat.dispose();
+      fillGeo.dispose();
+      fillMat.dispose();
+      wallGeo.dispose();
+      wallMat.dispose();
+    },
+  };
+}
+
 /**
  * Dibuja y, si son líneas, baja el brillo. La librería pone el (0,0) del G-code en la esquina delantera izquierda
  * de la cama; si el área imprimible empieza en otro punto, se desplaza el modelo. Después se añade la marca del frente.
  */
-function draw(v: GCodePreview.WebGLPreview, bed: Bed, front: Group | null) {
+function draw(v: GCodePreview.WebGLPreview, bed: Bed, front: Group | null, extra: Group | null = null) {
   v.render();
   const group = (v as unknown as { group?: Object3D }).group;
   if (group && (bed.minX || bed.minY)) group.position.set(-bed.x / 2 - bed.minX, 0, bed.y / 2 + bed.minY);
   if (front) v.scene.add(front);
+  if (extra) v.scene.add(extra);
   if (!v.renderTubes) toneDownLines(v);
   v.renderer.render(v.scene, v.camera);
 }
@@ -138,6 +203,9 @@ export function GcodeViewer({ path }: { path: string | null }) {
   const bedRef = useRef<Bed>(K2_SE_BED);
   const frontRef = useRef<{ key: string; group: Group; dispose: () => void } | null>(null);
   const frontLabel = t('viewer.front');
+  // Pieza señalada en la lista de piezas: se marca en el modelo si este es el archivo que se imprime.
+  const focusedName = useFocusedObject();
+  const highlightRef = useRef<{ group: Group; dispose: () => void } | null>(null);
   const frontFor = (bed: Bed) => {
     const key = `${bed.x}x${bed.y}:${frontLabel}`;
     if (frontRef.current?.key !== key) {
@@ -180,6 +248,8 @@ export function GcodeViewer({ path }: { path: string | null }) {
       preview.current = null;
       frontRef.current?.dispose();
       frontRef.current = null;
+      highlightRef.current?.dispose();
+      highlightRef.current = null;
     };
   }, []);
 
@@ -242,10 +312,32 @@ export function GcodeViewer({ path }: { path: string | null }) {
     if (!v || phase.kind !== 'ready') return;
     const t = setTimeout(() => {
       v.endLayer = shownLayer + 1;
-      draw(v, bedRef.current, frontFor(bedRef.current));
+      draw(v, bedRef.current, frontFor(bedRef.current), highlightRef.current?.group ?? null);
     }, 80);
     return () => clearTimeout(t);
   }, [shownLayer, phase.kind, frontLabel]);
+
+  const objects: BedObject[] = printingThis ? status.exclude_object?.objects ?? [] : [];
+  const focusedPoly = focusedName ? objectOutline(objects.find((o) => o.name === focusedName) ?? { name: '' }) : null;
+  const focusedKey = focusedPoly ? JSON.stringify(focusedPoly) : '';
+  useEffect(() => {
+    const v = preview.current;
+    if (!v || phase.kind !== 'ready') return;
+    if (highlightRef.current) {
+      v.scene.remove(highlightRef.current.group);
+      highlightRef.current.dispose();
+      highlightRef.current = null;
+    }
+    if (focusedPoly) {
+      const group = (v as unknown as { group?: Object3D }).group;
+      const height = group ? new Box3().setFromObject(group).max.y : 10;
+      highlightRef.current = makeHighlight(focusedPoly, bedRef.current, Number.isFinite(height) ? height : 10);
+      v.scene.add(highlightRef.current.group);
+    }
+    v.renderer.render(v.scene, v.camera);
+    // focusedPoly cambia de referencia en cada render: se compara por su contenido.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedKey, phase.kind]);
 
   const resetCamera = () => {
     if (preview.current) frameModel(preview.current);

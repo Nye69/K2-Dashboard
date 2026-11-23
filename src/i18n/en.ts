@@ -71,6 +71,7 @@ export const en: Record<Key, string> = {
   'objects.cancelAria': 'Cancel the object {name}',
   'objects.lastOne': 'It is the last object: use Stop',
   'objects.cancelOne': 'Cancel this object',
+  'objects.mapAria': 'Bed map with the objects. The front is at the bottom.',
 
   'printDialog.title': 'Print this file?',
   'printDialog.calibrate': 'Calibrate the bed first',
