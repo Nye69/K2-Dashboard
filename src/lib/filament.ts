@@ -4,6 +4,8 @@
 // de que el calor llegue a ese trozo, y el filamento nuevo no lo puede mover. Calentando antes y esperando con la
 // boquilla caliente, sale a la primera (probado en la impresora el 2026-11-23).
 
+import { tFor, type T } from '../i18n';
+
 /** Temperatura a la que calienta la propia macro de carga ([filament_rack] temp). */
 export const LOAD_TEMP = 220;
 /** Tiempo con la boquilla ya caliente antes de empujar, para que se ablande el trozo que quedó dentro. */
@@ -33,14 +35,14 @@ export function loadPhase(temp: number | undefined, reachedAt: number | null, no
   return left > 0 ? { step: 'soaking', secondsLeft: left } : { step: 'loading' };
 }
 
-export function loadPhaseLabel(p: LoadPhase): string {
-  if (p.step === 'heating') return `Calentando… ${p.temp}/${LOAD_TEMP} °C`;
+export function loadPhaseLabel(p: LoadPhase, t: T = tFor('es')): string {
+  if (p.step === 'heating') return t('load.heating', { temp: p.temp, target: LOAD_TEMP });
   if (p.step === 'soaking') {
     const m = Math.floor(p.secondsLeft / 60);
     const s = String(p.secondsLeft % 60).padStart(2, '0');
-    return `Ablandando el color anterior… ${m}:${s}`;
+    return t('load.soaking', { time: `${m}:${s}` });
   }
-  return 'Metiendo…';
+  return t('load.loading');
 }
 
 /**

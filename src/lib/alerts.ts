@@ -1,3 +1,5 @@
+import { tFor, type T } from '../i18n';
+
 export interface Alert {
   id: string;
   level: 'error' | 'warn';
@@ -22,35 +24,35 @@ export interface AlertInput {
 export const TEMP_TOLERANCE_C = 10;
 export const TEMP_GRACE_MS = 30_000;
 
-export function computeAlerts(i: AlertInput): Alert[] {
+export function computeAlerts(i: AlertInput, t: T = tFor('es')): Alert[] {
   if (!i.connected) {
-    return [{ id: 'disconnected', level: 'error', title: 'Sin conexión con la impresora', detail: 'Intentando reconectar…' }];
+    return [{ id: 'disconnected', level: 'error', title: t('alert.disconnected'), detail: t('alert.reconnecting') }];
   }
   const out: Alert[] = [];
   if (i.klippyState === 'error' || i.klippyState === 'shutdown') {
     out.push({
       id: 'klippy',
       level: 'error',
-      title: i.klippyState === 'shutdown' ? 'Klipper se ha apagado' : 'Klipper tiene un error',
+      title: i.klippyState === 'shutdown' ? t('alert.klippyShutdown') : t('alert.klippyError'),
       detail: i.klippyMessage || undefined,
     });
   }
   if (i.printState === 'error') {
-    out.push({ id: 'print_error', level: 'error', title: 'La impresión falló', detail: i.printMessage || undefined });
+    out.push({ id: 'print_error', level: 'error', title: t('alert.printFailed'), detail: i.printMessage || undefined });
   }
   if (i.printState === 'paused' && !i.pausedByUser) {
     out.push({
       id: 'paused_unexpected',
       level: 'warn',
-      title: 'La impresión se pausó sola',
-      detail: i.printMessage || 'Revisa el filamento o la impresora.',
+      title: t('alert.pausedAlone'),
+      detail: i.printMessage || t('alert.checkFilament'),
     });
   }
   const active = i.printState === 'printing' || i.printState === 'paused';
   if (active) {
     for (const s of i.filamentSensors) {
       if (s.enabled && !s.detected) {
-        out.push({ id: `filament_${s.name}`, level: 'warn', title: 'No se detecta filamento', detail: s.name });
+        out.push({ id: `filament_${s.name}`, level: 'warn', title: t('alert.noFilament'), detail: s.name });
       }
     }
   }
@@ -60,8 +62,8 @@ export function computeAlerts(i: AlertInput): Alert[] {
         out.push({
           id: `temp_${h.name}`,
           level: 'warn',
-          title: `${h.name} fuera de temperatura`,
-          detail: `${h.temp.toFixed(0)} °C de ${h.target.toFixed(0)} °C`,
+          title: t('alert.tempOff', { name: h.name }),
+          detail: t('alert.tempDetail', { temp: h.temp.toFixed(0), target: h.target.toFixed(0) }),
         });
       }
     }

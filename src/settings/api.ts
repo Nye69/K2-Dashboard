@@ -1,3 +1,4 @@
+import { tNow } from '../i18n';
 // Ajustes del dashboard (los guarda el servidor Node en /data/config.json).
 
 export interface Settings {
@@ -33,10 +34,10 @@ async function call<T>(path: string, method = 'GET', body?: unknown): Promise<T>
   });
   if (res.status === 401) {
     location.assign('/login');
-    throw new ApiError('Sesión caducada');
+    throw new ApiError(tNow('err.session'));
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(data.error ?? (data.errors ? 'Revisa los campos marcados.' : `Error ${res.status}`), data.errors ?? {});
+  if (!res.ok) throw new ApiError(data.error ?? (data.errors ? tNow('err.checkFields') : `Error ${res.status}`), data.errors ?? {});
   return data as T;
 }
 

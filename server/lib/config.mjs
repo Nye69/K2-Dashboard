@@ -13,6 +13,7 @@ import { dirname, join } from 'node:path';
 import { hashPassword } from './auth.mjs';
 import { isHost, isIpOrCidr, parseList } from './net.mjs';
 import { generateVapidKeys, isEmail } from './webpush.mjs';
+import { t } from './i18n.mjs';
 
 export const DEFAULT_USER = 'admin';
 export const DEFAULT_PASSWORD = 'changeme';
@@ -60,7 +61,7 @@ const isHttpUrl = (s) => {
  * Valida y limpia los ajustes que llegan desde la app.
  * Devuelve { settings } o { errors: { campo: mensaje } }.
  */
-export function validateSettings(input) {
+export function validateSettings(input, lang = 'es') {
   const errors = {};
   const s = {
     printerName: cleanName(input?.printerName),
@@ -69,25 +70,25 @@ export function validateSettings(input) {
     trustedProxies: parseList(input?.trustedProxies),
     pushContact: String(input?.pushContact ?? '').trim().replace(/^mailto:/i, ''),
   };
-  if (s.printerName.length > 40) errors.printerName = 'Máximo 40 caracteres.';
-  else if (/[<>]/.test(s.printerName)) errors.printerName = 'El nombre no puede llevar < ni >.';
-  if (s.printerHost && !isHost(s.printerHost)) errors.printerHost = 'Pon solo la IP o el nombre, sin http:// ni puerto (por ejemplo 192.168.1.50).';
-  if (s.panelUrl && !isHttpUrl(s.panelUrl)) errors.panelUrl = 'Tiene que empezar por https:// (por ejemplo https://impresora.midominio.com).';
+  if (s.printerName.length > 40) errors.printerName = t(lang, 'v.nameLong');
+  else if (/[<>]/.test(s.printerName)) errors.printerName = t(lang, 'v.nameChars');
+  if (s.printerHost && !isHost(s.printerHost)) errors.printerHost = t(lang, 'v.host');
+  if (s.panelUrl && !isHttpUrl(s.panelUrl)) errors.panelUrl = t(lang, 'v.url');
   const bad = s.trustedProxies.filter((p) => !isIpOrCidr(p));
-  if (bad.length) errors.trustedProxies = `No son IP ni rangos válidos: ${bad.join(', ')}`;
-  if (s.pushContact && !isEmail(s.pushContact)) errors.pushContact = 'Pon un correo válido (por ejemplo tu@correo.com).';
+  if (bad.length) errors.trustedProxies = t(lang, 'v.proxies', { list: bad.join(', ') });
+  if (s.pushContact && !isEmail(s.pushContact)) errors.pushContact = t(lang, 'v.email');
   return Object.keys(errors).length ? { errors } : { settings: s };
 }
 
 /** Usuario y contraseña nuevos. */
-export function validateCredentials(user, password, confirm) {
+export function validateCredentials(user, password, confirm, lang = 'es') {
   const errors = {};
   const u = String(user ?? '').trim();
-  if (!/^[A-Za-z0-9._@-]{3,32}$/.test(u)) errors.user = 'De 3 a 32 caracteres: letras, números, punto, guion, guion bajo o @.';
+  if (!/^[A-Za-z0-9._@-]{3,32}$/.test(u)) errors.user = t(lang, 'v.user');
   const p = String(password ?? '');
-  if (p.length < 10) errors.password = 'Mínimo 10 caracteres.';
-  else if (p === DEFAULT_PASSWORD || p.toLowerCase() === u.toLowerCase()) errors.password = 'Esa contraseña es demasiado fácil.';
-  if (confirm !== undefined && p !== confirm) errors.confirm = 'Las contraseñas no coinciden.';
+  if (p.length < 10) errors.password = t(lang, 'v.passwordShort');
+  else if (p === DEFAULT_PASSWORD || p.toLowerCase() === u.toLowerCase()) errors.password = t(lang, 'v.passwordEasy');
+  if (confirm !== undefined && p !== confirm) errors.confirm = t(lang, 'v.confirm');
   return Object.keys(errors).length ? { errors } : { user: u, password: p };
 }
 

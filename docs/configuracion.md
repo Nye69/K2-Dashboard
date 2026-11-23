@@ -11,6 +11,16 @@ Los ajustes se cambian desde la app con el botón del **engranaje**, al lado de 
 | **Dominio del dashboard** | La dirección pública, por ejemplo `https://impresora.midominio.com`. Los avisos la usan para abrir la app al tocarlos. |
 | **Proxy inverso de confianza** | La IP de tu Nginx Proxy Manager, Traefik, Caddy… Varias, separadas por comas. También acepta rangos (`10.0.0.0/8`). |
 
+## Idioma
+
+Arriba en **Ajustes** eliges **Español** o **English**. Se aplica al momento y solo en ese dispositivo: el móvil puede estar en inglés y el ordenador en español. El idioma se guarda en el navegador y en la cookie `k2-lang`, así que también cambia:
+
+- la pantalla de inicio de sesión (que además tiene su propio enlace *English / Español*),
+- los mensajes de error de Ajustes,
+- las notificaciones push que llegan a ese dispositivo.
+
+Por defecto, español.
+
 ## Red local y proxy
 
 El primer inicio de sesión (`admin` / `changeme`) solo funciona **desde la red local**. El dashboard decide de dónde viene cada visita así:

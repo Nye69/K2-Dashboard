@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useT } from '../i18n';
 
 interface ConfirmOptions {
   title: string;
@@ -16,6 +17,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [opts, setOpts] = useState<ConfirmOptions | null>(null);
   const resolver = useRef<(v: boolean) => void>(undefined);
   const okRef = useRef<HTMLButtonElement>(null);
+  const t = useT();
 
   const confirm = useCallback<ConfirmFn>(
     (o) =>
@@ -48,7 +50,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             <h3 id="dlg-title">{opts.title}</h3>
             <p>{opts.message}</p>
             <div className="actions">
-              <button className="btn" onClick={() => close(false)}>Cancelar</button>
+              <button className="btn" onClick={() => close(false)}>{t('common.cancel')}</button>
               <button ref={okRef} className={`btn ${opts.danger ? 'danger-solid' : 'go'}`} onClick={() => close(true)}>
                 {opts.confirmLabel}
               </button>

@@ -1,7 +1,8 @@
-import { Bell, BellOff, Check, Eye, EyeOff, LoaderCircle, Printer, Send, Shield, Smartphone, Trash2, UserRound, X } from 'lucide-react';
+import { Bell, BellOff, Check, Eye, EyeOff, Languages, LoaderCircle, Printer, Send, Shield, Smartphone, Trash2, UserRound, X } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { ApiError, getSettings, saveSettings, updateAccount, type FieldErrors, type Settings } from '../settings/api';
-import { currentSubscription, disablePush, enablePush, getPushInfo, pushSupport, removeDevice, sendTestPush, type PushInfo } from '../settings/push';
+import { currentSubscription, disablePush, enablePush, getPushInfo, pushSupport, removeDevice, sendTestPush, setPushLang, type PushInfo } from '../settings/push';
+import { dateLocale, LANGS, setLang, useLang, useT, type Lang } from '../i18n';
 
 type Tab = 'printer' | 'notify' | 'account';
 
@@ -9,6 +10,8 @@ const EMPTY: Settings = { printerName: '', printerHost: '', panelUrl: '', truste
 
 export function SettingsDialog({ onClose, onSaved }: { onClose: () => void; onSaved: (s: Settings) => void }) {
   const [tab, setTab] = useState<Tab>('printer');
+  const t = useT();
+  const lang = useLang();
   const [loaded, setLoaded] = useState(false);
   const [user, setUser] = useState('');
   const [form, setForm] = useState<Settings>(EMPTY);
@@ -62,7 +65,7 @@ export function SettingsDialog({ onClose, onSaved }: { onClose: () => void; onSa
       setForm(v.settings);
       setProxies(v.settings.trustedProxies.join(', '));
       setSavedContact(v.settings.pushContact);
-      setMessage({ kind: 'ok', text: 'Ajustes guardados.' });
+      setMessage({ kind: 'ok', text: t('settings.saved') });
       onSaved(v.settings);
     } catch (e) {
       fail(e);
@@ -79,7 +82,7 @@ export function SettingsDialog({ onClose, onSaved }: { onClose: () => void; onSa
       const v = await updateAccount(acc);
       setUser(v.user);
       setAcc({ currentPassword: '', user: v.user, password: '', confirm: '' });
-      setMessage({ kind: 'ok', text: 'Cuenta actualizada. Se cerró la sesión en los demás dispositivos.' });
+      setMessage({ kind: 'ok', text: t('settings.accountSaved') });
     } catch (e) {
       fail(e);
     } finally {
@@ -88,10 +91,19 @@ export function SettingsDialog({ onClose, onSaved }: { onClose: () => void; onSa
   };
 
   const tabs: [Tab, string, ReactNode][] = [
-    ['printer', 'Impresora', <Printer size={16} aria-hidden />],
-    ['notify', 'Avisos', <Bell size={16} aria-hidden />],
-    ['account', 'Cuenta', <UserRound size={16} aria-hidden />],
+    ['printer', t('settings.tabPrinter'), <Printer size={16} aria-hidden />],
+    ['notify', t('settings.tabNotify'), <Bell size={16} aria-hidden />],
+    ['account', t('settings.tabAccount'), <UserRound size={16} aria-hidden />],
   ];
+
+  // El idioma es de este dispositivo: se aplica al momento, sin pulsar Guardar.
+  const changeLang = (l: Lang) => {
+    if (l === lang) return;
+    setLang(l);
+    setMessage(null);
+    setErrors({});
+    setPushLang(l).catch(() => {});
+  };
 
   return (
     <div className="scrim" onClick={onClose}>
@@ -105,13 +117,25 @@ export function SettingsDialog({ onClose, onSaved }: { onClose: () => void; onSa
         onClick={(e) => e.stopPropagation()}
       >
         <div className="settings-head">
-          <h3 id="settings-title">Ajustes</h3>
-          <button className="icon-btn" onClick={onClose} aria-label="Cerrar ajustes" title="Cerrar">
+          <h3 id="settings-title">{t('settings.title')}</h3>
+          <button className="icon-btn" onClick={onClose} aria-label={t('settings.close')} title={t('common.close')}>
             <X size={18} />
           </button>
         </div>
 
-        <div className="seg settings-tabs" role="tablist" aria-label="Secciones de ajustes">
+        <div className="lang-row">
+          <span className="lang-label" id="lang-label"><Languages size={16} aria-hidden />{t('settings.language')}</span>
+          <div className="seg" role="radiogroup" aria-labelledby="lang-label">
+            {LANGS.map((l) => (
+              <button key={l.id} role="radio" lang={l.id} aria-checked={lang === l.id} className={`seg-btn ${lang === l.id ? 'on' : ''}`} onClick={() => changeLang(l.id)}>
+                {l.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="field-hint lang-hint">{t('settings.languageHint')}</p>
+
+        <div className="seg settings-tabs" role="tablist" aria-label={t('settings.sections')}>
           {tabs.map(([id, label, icon]) => (
             <button
               key={id}
@@ -132,24 +156,24 @@ export function SettingsDialog({ onClose, onSaved }: { onClose: () => void; onSa
 
         {!loaded && !message && (
           <div className="empty">
-            <LoaderCircle size={20} className="spin" aria-hidden /> Cargando…
+            <LoaderCircle size={20} className="spin" aria-hidden /> {t('common.loading')}
           </div>
         )}
 
         {loaded && tab === 'printer' && (
           <div className="settings-body">
-            <Field label="Nombre de la impresora" hint="Sale arriba en el panel, en la pestaña del navegador, al iniciar sesión y en las notificaciones. Vacío = K2." error={errors.printerName}>
+            <Field label={t('settings.printerName')} hint={t('settings.printerNameHint')} error={errors.printerName}>
               {(id) => <input id={id} value={form.printerName} onChange={(e) => set('printerName')(e.target.value)} placeholder="K2" maxLength={40} autoComplete="off" />}
             </Field>
-            <Field label="IP de la impresora" hint="La IP o el nombre de la impresora en tu red, sin http:// ni puerto. Conviene reservarla en el router para que no cambie." error={errors.printerHost}>
+            <Field label={t('settings.printerHost')} hint={t('settings.printerHostHint')} error={errors.printerHost}>
               {(id) => <input id={id} value={form.printerHost} onChange={(e) => set('printerHost')(e.target.value)} placeholder="192.168.1.50" inputMode="url" autoCapitalize="none" spellCheck={false} />}
             </Field>
-            <Field label="Dominio del dashboard" hint="La dirección pública con la que entras desde fuera. Se usa para abrir la app desde los avisos." error={errors.panelUrl}>
-              {(id) => <input id={id} value={form.panelUrl} onChange={(e) => set('panelUrl')(e.target.value)} placeholder="https://impresora.midominio.com" inputMode="url" autoCapitalize="none" spellCheck={false} />}
+            <Field label={t('settings.panelUrl')} hint={t('settings.panelUrlHint')} error={errors.panelUrl}>
+              {(id) => <input id={id} value={form.panelUrl} onChange={(e) => set('panelUrl')(e.target.value)} placeholder={t('settings.panelUrlPlaceholder')} inputMode="url" autoCapitalize="none" spellCheck={false} />}
             </Field>
             <Field
-              label="Proxy inverso de confianza"
-              hint="Si tienes Nginx Proxy Manager, Traefik u otro proxy delante, pon su IP (varias, separadas por comas). Así el dashboard ve la IP real de quien entra. Déjalo vacío si no hay proxy."
+              label={t('settings.proxies')}
+              hint={t('settings.proxiesHint')}
               error={errors.trustedProxies}
             >
               {(id) => <input id={id} value={proxies} onChange={(e) => setProxies(e.target.value)} placeholder="192.168.1.10" autoCapitalize="none" spellCheck={false} />}
@@ -160,11 +184,11 @@ export function SettingsDialog({ onClose, onSaved }: { onClose: () => void; onSa
         {loaded && tab === 'notify' && (
           <div className="settings-body">
             <Field
-              label="Correo de contacto"
-              hint="Apple, Google y Mozilla exigen un correo para aceptar las notificaciones (por si hay un problema con el envío). No se muestra a nadie más. Guarda antes de activar los avisos."
+              label={t('settings.contact')}
+              hint={t('settings.contactHint')}
               error={errors.pushContact}
             >
-              {(id) => <input id={id} type="email" value={form.pushContact} onChange={(e) => set('pushContact')(e.target.value)} placeholder="tu@correo.com" autoCapitalize="none" spellCheck={false} />}
+              {(id) => <input id={id} type="email" value={form.pushContact} onChange={(e) => set('pushContact')(e.target.value)} placeholder={t('settings.contactPlaceholder')} autoCapitalize="none" spellCheck={false} />}
             </Field>
             <PushSection contactSaved={!!savedContact} />
           </div>
@@ -173,18 +197,18 @@ export function SettingsDialog({ onClose, onSaved }: { onClose: () => void; onSa
         {loaded && tab === 'account' && (
           <div className="settings-body">
             <p className="hint" style={{ marginTop: 0 }}>
-              <Shield size={14} aria-hidden style={{ verticalAlign: '-2px' }} /> Sesión iniciada como <b>{user}</b>. Al cambiar la contraseña se cierra la sesión en los demás dispositivos.
+              <Shield size={14} aria-hidden style={{ verticalAlign: '-2px' }} /> {t('settings.signedInAs')} <b>{user}</b>. {t('settings.signedInHint')}
             </p>
-            <Field label="Usuario" error={errors.user}>
+            <Field label={t('settings.user')} error={errors.user}>
               {(id) => <input id={id} value={acc.user} onChange={(e) => setAcc({ ...acc, user: e.target.value })} autoComplete="username" autoCapitalize="none" spellCheck={false} />}
             </Field>
-            <Field label="Contraseña actual" error={errors.currentPassword}>
+            <Field label={t('settings.currentPassword')} error={errors.currentPassword}>
               {(id) => <PasswordInput id={id} value={acc.currentPassword} onChange={(v) => setAcc({ ...acc, currentPassword: v })} autoComplete="current-password" />}
             </Field>
-            <Field label="Contraseña nueva" hint="Mínimo 10 caracteres." error={errors.password}>
+            <Field label={t('settings.newPassword')} hint={t('settings.newPasswordHint')} error={errors.password}>
               {(id) => <PasswordInput id={id} value={acc.password} onChange={(v) => setAcc({ ...acc, password: v })} autoComplete="new-password" />}
             </Field>
-            <Field label="Repite la contraseña nueva" error={errors.confirm}>
+            <Field label={t('settings.repeatPassword')} error={errors.confirm}>
               {(id) => <PasswordInput id={id} value={acc.confirm} onChange={(v) => setAcc({ ...acc, confirm: v })} autoComplete="new-password" />}
             </Field>
           </div>
@@ -198,16 +222,16 @@ export function SettingsDialog({ onClose, onSaved }: { onClose: () => void; onSa
 
         {loaded && (
           <div className="actions">
-            <button className="btn" onClick={onClose}>Cerrar</button>
+            <button className="btn" onClick={onClose}>{t('common.close')}</button>
             {tab === 'account' ? (
               <button className="btn go" onClick={saveAccount} disabled={!!busy || !acc.currentPassword || !acc.password}>
                 {busy === 'account' ? <LoaderCircle size={16} className="spin" aria-hidden /> : <Check size={16} aria-hidden />}
-                Guardar cuenta
+                {t('settings.saveAccount')}
               </button>
             ) : (
               <button className="btn go" onClick={save} disabled={!!busy}>
                 {busy === 'save' ? <LoaderCircle size={16} className="spin" aria-hidden /> : <Check size={16} aria-hidden />}
-                Guardar
+                {t('common.save')}
               </button>
             )}
           </div>
@@ -219,6 +243,8 @@ export function SettingsDialog({ onClose, onSaved }: { onClose: () => void; onSa
 
 function PushSection({ contactSaved }: { contactSaved: boolean }) {
   const support = pushSupport();
+  const t = useT();
+  const lang = useLang();
   const [info, setInfo] = useState<PushInfo | null>(null);
   const [mine, setMine] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -254,24 +280,24 @@ function PushSection({ contactSaved }: { contactSaved: boolean }) {
     <div className="push-box">
       <div className="push-title">
         <Smartphone size={16} aria-hidden />
-        Este dispositivo
+        {t('push.thisDevice')}
       </div>
       {support === 'ios-browser' && (
-        <p className="field-hint">En iPhone y iPad los avisos solo funcionan desde la app: en Safari toca Compartir → Añadir a pantalla de inicio, ábrela desde ahí y vuelve a esta pantalla.</p>
+        <p className="field-hint">{t('push.iosBrowser')}</p>
       )}
-      {support === 'insecure' && <p className="field-hint">Los avisos necesitan HTTPS. Entra por tu dominio (https://…) en vez de por la IP.</p>}
-      {support === 'unsupported' && <p className="field-hint">Este navegador no admite notificaciones push.</p>}
-      {support === 'ok' && !contactSaved && <p className="field-hint">Pon el correo de contacto y pulsa Guardar para poder activar los avisos.</p>}
+      {support === 'insecure' && <p className="field-hint">{t('push.insecure')}</p>}
+      {support === 'unsupported' && <p className="field-hint">{t('push.unsupported')}</p>}
+      {support === 'ok' && !contactSaved && <p className="field-hint">{t('push.needContact')}</p>}
       {support === 'ok' && contactSaved && info && (
         <div className="push-actions">
           {mine ? (
             <>
-              <span className="pill ok"><Bell size={14} aria-hidden />Avisos activados</span>
-              <button className="btn" disabled={!!busy} onClick={() => act('test', () => sendTestPush(mine), 'Notificación de prueba enviada.')}>
-                {spinner('test', <Send size={16} aria-hidden />)}Probar
+              <span className="pill ok"><Bell size={14} aria-hidden />{t('push.enabled')}</span>
+              <button className="btn" disabled={!!busy} onClick={() => act('test', () => sendTestPush(mine), t('push.testSent'))}>
+                {spinner('test', <Send size={16} aria-hidden />)}{t('push.test')}
               </button>
-              <button className="btn" disabled={!!busy} onClick={() => act('off', disablePush, 'Avisos desactivados en este dispositivo.')}>
-                {spinner('off', <BellOff size={16} aria-hidden />)}Desactivar
+              <button className="btn" disabled={!!busy} onClick={() => act('off', disablePush, t('push.disabledMsg'))}>
+                {spinner('off', <BellOff size={16} aria-hidden />)}{t('push.disable')}
               </button>
             </>
           ) : (
@@ -282,9 +308,9 @@ function PushSection({ contactSaved }: { contactSaved: boolean }) {
                 await enablePush(info.publicKey);
                 const sub = await currentSubscription();
                 if (sub) await sendTestPush(sub.endpoint);
-              }, 'Avisos activados. Te mandé una notificación de prueba.')}
+              }, t('push.enabledMsg'))}
             >
-              {spinner('on', <Bell size={16} aria-hidden />)}Activar avisos en este dispositivo
+              {spinner('on', <Bell size={16} aria-hidden />)}{t('push.enable')}
             </button>
           )}
         </div>
@@ -292,16 +318,16 @@ function PushSection({ contactSaved }: { contactSaved: boolean }) {
 
       {info && info.devices.length > 0 && (
         <>
-          <div className="push-title" style={{ marginTop: 14 }}>Dispositivos con avisos</div>
+          <div className="push-title" style={{ marginTop: 14 }}>{t('push.devices')}</div>
           <ul className="device-list">
             {info.devices.map((d) => (
               <li key={d.id}>
                 <span>
                   {d.label}
-                  {d.endpoint === mine && <span className="device-this"> · este</span>}
-                  <span className="device-date">{new Date(d.createdAt).toLocaleDateString('es')}</span>
+                  {d.endpoint === mine && <span className="device-this">{t('push.this')}</span>}
+                  <span className="device-date">{new Date(d.createdAt).toLocaleDateString(dateLocale(lang))}</span>
                 </span>
-                <button className="icon-btn danger" disabled={!!busy} onClick={() => act(`rm-${d.id}`, () => removeDevice(d.id))} aria-label={`Quitar ${d.label}`} title="Quitar">
+                <button className="icon-btn danger" disabled={!!busy} onClick={() => act(`rm-${d.id}`, () => removeDevice(d.id))} aria-label={t('push.removeAria', { label: d.label })} title={t('push.remove')}>
                   {spinner(`rm-${d.id}`, <Trash2 size={16} />)}
                 </button>
               </li>
@@ -332,10 +358,11 @@ function Field({ label, hint, error, children }: { label: string; hint?: string;
 
 function PasswordInput({ id, value, onChange, autoComplete }: { id: string; value: string; onChange: (v: string) => void; autoComplete: string }) {
   const [show, setShow] = useState(false);
+  const t = useT();
   return (
     <span className="pw-wrap">
       <input id={id} type={show ? 'text' : 'password'} value={value} onChange={(e) => onChange(e.target.value)} autoComplete={autoComplete} />
-      <button type="button" className="icon-btn" onClick={() => setShow(!show)} aria-label={show ? 'Ocultar contraseña' : 'Mostrar contraseña'} aria-pressed={show}>
+      <button type="button" className="icon-btn" onClick={() => setShow(!show)} aria-label={show ? t('settings.hidePassword') : t('settings.showPassword')} aria-pressed={show}>
         {show ? <EyeOff size={18} /> : <Eye size={18} />}
       </button>
     </span>

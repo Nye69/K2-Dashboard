@@ -3,9 +3,11 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { setTemp } from '../moonraker/api';
 import { usePrinter } from '../moonraker/usePrinter';
 import { TempChart } from './TempChart';
+import { useT } from '../i18n';
 
 export function TempCard() {
   const { status, history, conn } = usePrinter();
+  const t = useT();
   const ex = status.extruder;
   const bed = status.heater_bed;
   const mcu = status['temperature_sensor mcu_temp'];
@@ -14,20 +16,20 @@ export function TempCard() {
     <section className="card" aria-labelledby="temps-title">
       <div className="card-head">
         <Thermometer size={18} aria-hidden color="var(--text-2)" />
-        <h2 id="temps-title">Temperaturas</h2>
+        <h2 id="temps-title">{t('temps.title')}</h2>
       </div>
       <div className="heaters">
         {ex && (
-          <Heater heater="extruder" name="Boquilla" color="var(--nozzle)" icon={<Flame size={18} />} temp={ex.temperature} target={ex.target} max={350} disabled={conn !== 'open'} />
+          <Heater heater="extruder" name={t('temps.nozzle')} color="var(--nozzle)" icon={<Flame size={18} />} temp={ex.temperature} target={ex.target} max={350} disabled={conn !== 'open'} />
         )}
         {bed && (
-          <Heater heater="heater_bed" name="Cama" color="var(--bed)" icon={<SquareDashed size={18} />} temp={bed.temperature} target={bed.target} max={120} disabled={conn !== 'open'} />
+          <Heater heater="heater_bed" name={t('temps.bed')} color="var(--bed)" icon={<SquareDashed size={18} />} temp={bed.temperature} target={bed.target} max={120} disabled={conn !== 'open'} />
         )}
         {mcu && (
           <div className="heater">
             <span className="ico" style={{ color: 'var(--text-2)' }}><Cpu size={18} aria-hidden /></span>
             <div>
-              <div className="name">Electrónica (MCU)</div>
+              <div className="name">{t('temps.mcu')}</div>
               <div className="temp num">{Number(mcu.temperature ?? 0).toFixed(0)}°</div>
             </div>
           </div>
@@ -48,6 +50,7 @@ function Heater(props: {
   max: number;
   disabled: boolean;
 }) {
+  const t = useT();
   const [value, setValue] = useState('');
   const [error, setError] = useState('');
   const [editing, setEditing] = useState(false);
@@ -56,14 +59,14 @@ function Heater(props: {
     if (!editing) setValue(props.target ? String(Math.round(props.target)) : '');
   }, [props.target, editing]);
 
-  const apply = async (t: number) => {
+  const apply = async (target: number) => {
     setError('');
-    if (!Number.isFinite(t) || t < 0 || t > props.max) {
-      setError(`Entre 0 y ${props.max} °C`);
+    if (!Number.isFinite(target) || target < 0 || target > props.max) {
+      setError(t('temps.range', { max: props.max }));
       return;
     }
     try {
-      await setTemp(props.heater, t);
+      await setTemp(props.heater, target);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -77,7 +80,7 @@ function Heater(props: {
         <div className="name">{props.name}</div>
         <div className="temp num">
           {Number(props.temp ?? 0).toFixed(0)}°{' '}
-          <small>/ {props.target ? `${Math.round(props.target)}°` : 'apagada'}</small>
+          <small>/ {props.target ? `${Math.round(props.target)}°` : t('temps.off')}</small>
         </div>
         {error && <div style={{ color: '#fca5a5', fontSize: 13 }} role="alert">{error}</div>}
       </div>
@@ -89,7 +92,7 @@ function Heater(props: {
           apply(parseFloat(value));
         }}
       >
-        <label htmlFor={id} className="sr-only">Objetivo de {props.name} en °C</label>
+        <label htmlFor={id} className="sr-only">{t('temps.targetLabel', { name: props.name })}</label>
         <input
           id={id}
           type="number"
@@ -106,8 +109,8 @@ function Heater(props: {
         <button
           type="button"
           className="icon-btn"
-          title={`Apagar ${props.name.toLowerCase()}`}
-          aria-label={`Apagar ${props.name.toLowerCase()}`}
+          title={t('temps.turnOff', { name: props.name.toLowerCase() })}
+          aria-label={t('temps.turnOff', { name: props.name.toLowerCase() })}
           disabled={props.disabled || !props.target}
           onClick={() => apply(0)}
         >

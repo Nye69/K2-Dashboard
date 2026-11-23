@@ -1,3 +1,4 @@
+import { tNow } from '../i18n';
 // Notificaciones push en este dispositivo: registro del service worker, permiso y suscripción.
 
 export interface PushDevice {
@@ -67,7 +68,7 @@ export async function currentSubscription() {
 /** Pide permiso y suscribe este dispositivo. Tiene que llamarse desde un toque del usuario (iOS lo exige). */
 export async function enablePush(publicKey: string): Promise<PushInfo> {
   const permission = await Notification.requestPermission();
-  if (permission !== 'granted') throw new Error('No diste permiso para las notificaciones. Actívalo en los ajustes del sistema para esta app.');
+  if (permission !== 'granted') throw new Error(tNow('push.permission'));
   const reg = (await registerServiceWorker())!;
   await navigator.serviceWorker.ready;
   let sub = await reg.pushManager.getSubscription();
@@ -91,3 +92,10 @@ export async function disablePush(): Promise<PushInfo> {
 
 export const removeDevice = (id: string) => api<PushInfo>('/unsubscribe', { id });
 export const sendTestPush = (endpoint?: string) => api<{ sent: number }>('/test', { endpoint });
+
+/** Si este dispositivo tiene los avisos activados, que pasen a llegar en el idioma nuevo. */
+export async function setPushLang(lang: string): Promise<void> {
+  if (pushSupport() !== 'ok') return;
+  const sub = await currentSubscription();
+  if (sub) await api<PushInfo>('/lang', { endpoint: sub.endpoint, lang });
+}

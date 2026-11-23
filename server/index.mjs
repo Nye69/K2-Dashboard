@@ -15,6 +15,7 @@ import { isLanRequest, normalizeIp, originIp } from './lib/net.mjs';
 import { isValidSubscription, sendPush, vapidSubject } from './lib/webpush.mjs';
 import { Notifier } from './notifier.mjs';
 import { loginPage, setupPage } from './pages.mjs';
+import { langCookie, langOf, LANGS, normalizeLang, t } from './lib/i18n.mjs';
 
 const DATA_DIR = process.env.DATA_DIR ?? '/data';
 const RUN_DIR = process.env.RUN_DIR ?? '/run/k2';
@@ -61,17 +62,19 @@ if (process.argv.includes('--prepare')) {
  * Manda una notificación push a todos los dispositivos suscritos (o solo a uno).
  * Las suscripciones que ya no existen (el usuario quitó el permiso o borró la app) se eliminan.
  */
-async function broadcast(message, { urgency = 'normal', only } = {}) {
+async function broadcast(message, { urgency = 'normal', only, lang = 'es' } = {}) {
   const subject = vapidSubject(cfg.settings.pushContact);
   if (!subject) {
     log('sin correo de contacto en Ajustes: no se envían notificaciones');
-    return { sent: 0, failed: 0, removed: 0, errors: ['Falta el correo de contacto en Ajustes → Avisos'] };
+    return { sent: 0, failed: 0, removed: 0, errors: [t(lang, 'api.noContact')] };
   }
   const targets = cfg.push.subscriptions.filter((sub) => !only || sub.endpoint === only);
   const results = await Promise.all(
     targets.map(async (sub) => {
       try {
-        return { sub, r: await sendPush(sub, message, { vapid: cfg.push.vapid, subject, urgency }) };
+        // Cada dispositivo recibe el aviso en su idioma (el que tenía al activar los avisos o al cambiarlo en Ajustes).
+        const payload = typeof message === 'function' ? message(normalizeLang(sub.lang)) : message;
+        return { sub, r: await sendPush(sub, payload, { vapid: cfg.push.vapid, subject, urgency }) };
       } catch (e) {
         return { sub, r: { ok: false, error: e.message } };
       }
@@ -96,7 +99,7 @@ async function broadcast(message, { urgency = 'normal', only } = {}) {
 const URGENCY = (priority) => (priority >= 4 ? 'high' : priority <= 2 ? 'low' : 'normal');
 
 const notifier = new Notifier((ev) => {
-  broadcast({ title: `${displayName(cfg.settings)}: ${ev.title}`, body: ev.message || '', tag: `k2-${ev.id}`, url: cfg.settings.panelUrl || '/' }, { urgency: URGENCY(ev.priority) }).catch((e) =>
+  broadcast((lang) => ({ title: `${displayName(cfg.settings)}: ${t(lang, `event.${ev.id}`)}`, body: ev.message || '', tag: `k2-${ev.id}`, url: cfg.settings.panelUrl || '/' }), { urgency: URGENCY(ev.priority) }).catch((e) =>
     log('no se pudo notificar:', e.message),
   );
 });
@@ -180,17 +183,23 @@ const html = (res, status, body) => res.writeHead(status, { 'Content-Type': 'tex
 const json = (res, status, body, headers = {}) => res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers }).end(JSON.stringify(body));
 const redirect = (res, to, headers = {}) => res.writeHead(303, { Location: to, ...headers }).end();
 
-const LOGIN_ERRORS = {
-  bad: 'Usuario o contraseña incorrectos.',
-  rate: 'Demasiados intentos. Espera 15 minutos.',
-};
-
-const LAN_ONLY = 'La configuración inicial solo se puede hacer desde la red local. Entra con la IP del servidor estando en casa.';
+const LOGIN_ERRORS = { bad: 'login.bad', rate: 'login.rate' };
 
 async function handle(req, res) {
   const url = new URL(req.url ?? '/', 'http://x');
   const path = url.pathname;
   const method = req.method ?? 'GET';
+  const lang = langOf(req);
+  const LAN_ONLY = t(lang, 'login.lanOnly');
+
+  // Enlace "English / Español" del login: guarda el idioma y vuelve a la misma página.
+  if ((path === '/login' || path === '/setup') && method === 'GET' && url.searchParams.has('lang')) {
+    const next = url.searchParams.get('lang');
+    const keep = new URLSearchParams(url.searchParams);
+    keep.delete('lang');
+    const qs = keep.toString();
+    return redirect(res, path + (qs ? `?${qs}` : ''), LANGS.includes(next) ? { 'Set-Cookie': langCookie(next) } : {});
+  }
 
   if (path === '/auth/health') return res.writeHead(200, { 'Content-Type': 'text/plain' }).end('ok');
 
@@ -204,17 +213,17 @@ async function handle(req, res) {
     // Con sesión válida no se enseña el login: así el gesto de "atrás" del iPhone (deslizar desde la izquierda)
     // no deja a nadie en la pantalla de entrar con el panel ya abierto.
     if (!cfg.auth.mustChange && sessionUser(req)) return redirect(res, '/');
-    if (cfg.auth.mustChange && !isLan(req)) return html(res, 403, loginPage({ name: displayName(cfg.settings), error: LAN_ONLY, iconDataUri }));
+    if (cfg.auth.mustChange && !isLan(req)) return html(res, 403, loginPage({ name: displayName(cfg.settings), error: LAN_ONLY, iconDataUri, lang }));
     const e = url.searchParams.get('e');
-    if (e) return html(res, 200, loginPage({ name: displayName(cfg.settings), error: LOGIN_ERRORS[e] ?? LOGIN_ERRORS.bad, firstRun: cfg.auth.mustChange, iconDataUri }));
-    return html(res, 200, loginPage({ name: displayName(cfg.settings), firstRun: cfg.auth.mustChange, iconDataUri }));
+    if (e) return html(res, 200, loginPage({ name: displayName(cfg.settings), error: t(lang, LOGIN_ERRORS[e] ?? LOGIN_ERRORS.bad), firstRun: cfg.auth.mustChange, iconDataUri, lang }));
+    return html(res, 200, loginPage({ name: displayName(cfg.settings), firstRun: cfg.auth.mustChange, iconDataUri, lang }));
   }
 
   if (path === '/auth/login' && method === 'POST') {
     if (!sameOrigin(req)) return res.writeHead(403).end();
     const { origin: clientIp } = clientInfo(req);
     const now = Date.now();
-    if (cfg.auth.mustChange && !isLan(req)) return html(res, 403, loginPage({ name: displayName(cfg.settings), error: LAN_ONLY, iconDataUri }));
+    if (cfg.auth.mustChange && !isLan(req)) return html(res, 403, loginPage({ name: displayName(cfg.settings), error: LAN_ONLY, iconDataUri, lang }));
     if (limiter.blocked(clientIp, now)) return redirect(res, '/login?e=rate');
     let form;
     try {
@@ -239,15 +248,15 @@ async function handle(req, res) {
   // ---- configuración inicial: cambiar admin / changeme ----
   if (path === '/setup' && method === 'GET') {
     if (!cfg.auth.mustChange) return redirect(res, '/');
-    if (!isLan(req)) return html(res, 403, loginPage({ name: displayName(cfg.settings), error: LAN_ONLY, iconDataUri }));
+    if (!isLan(req)) return html(res, 403, loginPage({ name: displayName(cfg.settings), error: LAN_ONLY, iconDataUri, lang }));
     if (!sessionUser(req)) return redirect(res, '/login');
-    return html(res, 200, setupPage({ name: displayName(cfg.settings), iconDataUri }));
+    return html(res, 200, setupPage({ name: displayName(cfg.settings), iconDataUri, lang }));
   }
 
   if (path === '/auth/setup' && method === 'POST') {
     if (!sameOrigin(req)) return res.writeHead(403).end();
     if (!cfg.auth.mustChange) return redirect(res, '/');
-    if (!isLan(req)) return html(res, 403, loginPage({ name: displayName(cfg.settings), error: LAN_ONLY, iconDataUri }));
+    if (!isLan(req)) return html(res, 403, loginPage({ name: displayName(cfg.settings), error: LAN_ONLY, iconDataUri, lang }));
     if (!sessionUser(req)) return redirect(res, '/login');
     let form;
     try {
@@ -255,8 +264,8 @@ async function handle(req, res) {
     } catch {
       return res.writeHead(400).end();
     }
-    const v = validateCredentials(form.get('user'), form.get('password'), form.get('confirm') ?? '');
-    if (v.errors) return html(res, 400, setupPage({ name: displayName(cfg.settings), errors: v.errors, user: form.get('user') ?? '', iconDataUri }));
+    const v = validateCredentials(form.get('user'), form.get('password'), form.get('confirm') ?? '', lang);
+    if (v.errors) return html(res, 400, setupPage({ name: displayName(cfg.settings), errors: v.errors, user: form.get('user') ?? '', iconDataUri, lang }));
     cfg = { ...cfg, auth: { user: v.user, hash: await hashPassword(v.password), mustChange: false, secret: randomBytes(32).toString('base64url') } };
     await saveConfig(DATA_DIR, cfg);
     log('administrador creado:', v.user);
@@ -265,21 +274,21 @@ async function handle(req, res) {
 
   // ---- API de ajustes (para la app) ----
   if (path.startsWith('/auth/api/')) {
-    if (cfg.auth.mustChange || !sessionUser(req)) return json(res, 401, { error: 'Sesión caducada' });
-    if (method !== 'GET' && (!sameOrigin(req) || !String(req.headers['content-type'] ?? '').startsWith('application/json'))) return json(res, 403, { error: 'Petición no permitida' });
+    if (cfg.auth.mustChange || !sessionUser(req)) return json(res, 401, { error: t(lang, 'api.session') });
+    if (method !== 'GET' && (!sameOrigin(req) || !String(req.headers['content-type'] ?? '').startsWith('application/json'))) return json(res, 403, { error: t(lang, 'api.forbidden') });
     let body = {};
     if (method !== 'GET') {
       try {
         body = JSON.parse((await readBody(req, 16_384)) || '{}');
       } catch {
-        return json(res, 400, { error: 'JSON no válido' });
+        return json(res, 400, { error: t(lang, 'api.badJson') });
       }
     }
 
     if (path === '/auth/api/settings' && method === 'GET') return json(res, 200, publicView(cfg));
 
     if (path === '/auth/api/settings' && method === 'PUT') {
-      const v = validateSettings(body);
+      const v = validateSettings(body, lang);
       if (v.errors) return json(res, 400, { errors: v.errors });
       const nginxChanged = JSON.stringify([v.settings.printerHost, v.settings.trustedProxies]) !== JSON.stringify([cfg.settings.printerHost, cfg.settings.trustedProxies]);
       cfg = { ...cfg, settings: v.settings };
@@ -294,8 +303,8 @@ async function handle(req, res) {
     }
 
     if (path === '/auth/api/account' && method === 'POST') {
-      if (!(await verifyPassword(String(body.currentPassword ?? ''), cfg.auth.hash))) return json(res, 400, { errors: { currentPassword: 'La contraseña actual no es correcta.' } });
-      const v = validateCredentials(body.user, body.password, body.confirm ?? '');
+      if (!(await verifyPassword(String(body.currentPassword ?? ''), cfg.auth.hash))) return json(res, 400, { errors: { currentPassword: t(lang, 'api.wrongPassword') } });
+      const v = validateCredentials(body.user, body.password, body.confirm ?? '', lang);
       if (v.errors) return json(res, 400, { errors: v.errors });
       // Secreto nuevo: se cierran las sesiones de los demás dispositivos.
       cfg = { ...cfg, auth: { user: v.user, hash: await hashPassword(v.password), mustChange: false, secret: randomBytes(32).toString('base64url') } };
@@ -309,11 +318,11 @@ async function handle(req, res) {
 
     if (path === '/auth/api/push/subscribe' && method === 'POST') {
       const sub = body.subscription;
-      if (!isValidSubscription(sub)) return json(res, 400, { error: 'Suscripción no válida' });
-      const label = String(body.label ?? 'Dispositivo').trim().slice(0, 60) || 'Dispositivo';
+      if (!isValidSubscription(sub)) return json(res, 400, { error: t(lang, 'api.badSubscription') });
+      const label = String(body.label ?? '').trim().slice(0, 60) || t(lang, 'device.default');
       const others = cfg.push.subscriptions.filter((x) => x.endpoint !== sub.endpoint);
-      if (others.length >= 50) return json(res, 400, { error: 'Demasiados dispositivos suscritos (máximo 50)' });
-      const entry = { id: randomBytes(6).toString('hex'), label, createdAt: new Date().toISOString(), endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth } };
+      if (others.length >= 50) return json(res, 400, { error: t(lang, 'api.tooManyDevices') });
+      const entry = { id: randomBytes(6).toString('hex'), label, createdAt: new Date().toISOString(), endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth }, lang };
       cfg = { ...cfg, push: { ...cfg.push, subscriptions: [...others, entry] } };
       await saveConfig(DATA_DIR, cfg);
       log('dispositivo suscrito:', label);
@@ -326,19 +335,27 @@ async function handle(req, res) {
       return json(res, 200, pushView(cfg));
     }
 
+    // Al cambiar el idioma en Ajustes, los avisos de este dispositivo pasan a llegar en ese idioma.
+    if (path === '/auth/api/push/lang' && method === 'POST') {
+      const next = normalizeLang(body.lang);
+      cfg = { ...cfg, push: { ...cfg.push, subscriptions: cfg.push.subscriptions.map((x) => (x.endpoint === body.endpoint ? { ...x, lang: next } : x)) } };
+      await saveConfig(DATA_DIR, cfg);
+      return json(res, 200, pushView(cfg));
+    }
+
     if (path === '/auth/api/push/test' && method === 'POST') {
-      if (!cfg.settings.pushContact) return json(res, 400, { errors: { pushContact: 'Pon primero un correo de contacto y guarda.' } });
+      if (!cfg.settings.pushContact) return json(res, 400, { errors: { pushContact: t(lang, 'api.contactFirst') } });
       const only = body.endpoint ? String(body.endpoint) : undefined;
-      if (!cfg.push.subscriptions.some((x) => !only || x.endpoint === only)) return json(res, 400, { error: 'Este dispositivo no tiene los avisos activados.' });
+      if (!cfg.push.subscriptions.some((x) => !only || x.endpoint === only)) return json(res, 400, { error: t(lang, 'api.notSubscribed') });
       const r = await broadcast(
-        { title: `Avisos de ${displayName(cfg.settings)} activados`, body: 'Así te llegarán los avisos de la impresora.', tag: 'k2-test', url: cfg.settings.panelUrl || '/' },
-        { only },
+        (l) => ({ title: t(l, 'push.testTitle', { name: displayName(cfg.settings) }), body: t(l, 'push.testBody'), tag: 'k2-test', url: cfg.settings.panelUrl || '/' }),
+        { only, lang },
       );
-      if (!r.sent) return json(res, 502, { error: r.errors[0] ?? (r.removed ? 'La suscripción caducó; vuelve a activar los avisos.' : 'No se pudo enviar') });
+      if (!r.sent) return json(res, 502, { error: r.errors[0] ?? (r.removed ? t(lang, 'api.expired') : t(lang, 'api.sendFailed')) });
       return json(res, 200, r);
     }
 
-    return json(res, 404, { error: 'No existe' });
+    return json(res, 404, { error: t(lang, 'api.notFound') });
   }
 
   res.writeHead(404).end();
