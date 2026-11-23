@@ -75,6 +75,7 @@ export const es = {
   'objects.cancelAria': 'Cancelar la pieza {name}',
   'objects.lastOne': 'Es la última pieza: usa Parar',
   'objects.cancelOne': 'Cancelar esta pieza',
+  'objects.mapAria': 'Mapa de la cama con las piezas. El frente está abajo.',
 
   // Diálogo de imprimir
   'printDialog.title': '¿Imprimir este archivo?',
