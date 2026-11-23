@@ -394,3 +394,9 @@ button, input { font: inherit; color: inherit; }
 .calib-option input { width: 20px; height: 20px; margin-top: 1px; accent-color: var(--accent); flex: none; }
 .calib-option > span { display: grid; gap: 4px; }
 .calib-title { display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--text); }
+
+/* Selector de idioma (Ajustes) */
+.lang-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
+.lang-label { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--text-2); }
+.lang-row .seg { flex: 0 1 220px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.lang-hint { margin: 6px 0 14px; }

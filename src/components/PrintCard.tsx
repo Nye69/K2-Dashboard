@@ -7,6 +7,7 @@ import { cancelPrint, fileInfo, pausePrint, resumePrint, type FileInfo } from '.
 import { usePrinter } from '../moonraker/usePrinter';
 import { useConfirm } from './ConfirmDialog';
 import { ObjectsList } from './ObjectsList';
+import { useLang, useT } from '../i18n';
 
 export function useFileInfo(path: string | null | undefined, modified = 0) {
   const [info, setInfo] = useState<FileInfo>({});
@@ -24,6 +25,8 @@ export function useFileInfo(path: string | null | undefined, modified = 0) {
 
 export function PrintCard() {
   const { conn, status, markUserPause } = usePrinter();
+  const t = useT();
+  const lang = useLang();
   const confirm = useConfirm();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -62,9 +65,9 @@ export function PrintCard() {
   });
   const onStop = async () => {
     const ok = await confirm({
-      title: '¿Parar la impresión?',
-      message: `Se cancelará "${filename}". No se puede reanudar después.`,
-      confirmLabel: 'Parar impresión',
+      title: t('print.stopTitle'),
+      message: t('print.stopMessage', { file: filename }),
+      confirmLabel: t('print.stopConfirm'),
       danger: true,
     });
     if (ok) run(cancelPrint);
@@ -76,17 +79,17 @@ export function PrintCard() {
     <section className="card" aria-labelledby="print-title">
       <div className="card-head">
         <Printer size={18} aria-hidden color="var(--text-2)" />
-        <h2 id="print-title">Impresión</h2>
+        <h2 id="print-title">{t('print.title')}</h2>
       </div>
 
       {!active ? (
         <div className="idle">
           <CircleCheck size={36} aria-hidden />
           <div style={{ fontWeight: 600, color: 'var(--text)' }}>
-            {state === 'complete' ? 'Impresión terminada' : state === 'cancelled' ? 'Impresión cancelada' : state === 'error' ? 'La última impresión falló' : 'Lista para imprimir'}
+            {t(state === 'complete' ? 'print.finished' : state === 'cancelled' ? 'print.cancelled' : state === 'error' ? 'print.lastFailed' : 'print.ready')}
           </div>
           {filename && state !== 'standby' && <div className="job-sub">{filename}</div>}
-          <div className="job-sub" style={{ marginTop: 4 }}>Elige un archivo abajo para empezar.</div>
+          <div className="job-sub" style={{ marginTop: 4 }}>{t('print.pickFile')}</div>
         </div>
       ) : (
         <>
@@ -95,9 +98,9 @@ export function PrintCard() {
             <div style={{ minWidth: 0 }}>
               <div className="job-name">{filename}</div>
               <div className="job-sub">
-                {state === 'paused' ? 'Pausada' : 'Imprimiendo'}
+                {state === 'paused' ? t('print.paused') : t('print.printing')}
                 {info.filamentType ? ` · ${info.filamentType}` : ''}
-                {info.filamentGrams ? ` · ${info.filamentGrams.toFixed(0)} g` : info.filamentMeters ? ` · ${info.filamentMeters.toFixed(1)} m de filamento` : ''}
+                {info.filamentGrams ? ` · ${info.filamentGrams.toFixed(0)} g` : info.filamentMeters ? ` · ${t('print.meters', { m: info.filamentMeters.toFixed(1) })}` : ''}
               </div>
             </div>
           </div>
@@ -108,28 +111,28 @@ export function PrintCard() {
             aria-valuenow={Math.round(progress * 100)}
             aria-valuemin={0}
             aria-valuemax={100}
-            aria-label="Progreso de la impresión"
+            aria-label={t('print.progress')}
           >
             <i style={{ width: `${progress * 100}%` }} />
           </div>
           <div className="stats">
-            <Stat icon={<Hourglass size={14} />} label="Falta" value={formatDuration(remaining)} />
-            <Stat icon={<CalendarClock size={14} />} label="Termina" value={remaining != null ? formatClock(Date.now() + remaining * 1000) : '—'} />
-            <Stat icon={<Clock size={14} />} label="Lleva" value={formatDuration(elapsed)} />
-            <Stat icon={<Layers size={14} />} label="Capa" value={layer != null && layers ? `${layer} / ${layers}` : '—'} />
+            <Stat icon={<Hourglass size={14} />} label={t('print.left')} value={formatDuration(remaining)} />
+            <Stat icon={<CalendarClock size={14} />} label={t('print.ends')} value={remaining != null ? formatClock(Date.now() + remaining * 1000, lang) : '—'} />
+            <Stat icon={<Clock size={14} />} label={t('print.elapsed')} value={formatDuration(elapsed)} />
+            <Stat icon={<Layers size={14} />} label={t('print.layer')} value={layer != null && layers ? `${layer} / ${layers}` : '—'} />
           </div>
           <div className="actions">
             {state === 'paused' ? (
               <button className="btn go" disabled={disabled} onClick={() => run(resumePrint)}>
-                <Play size={18} aria-hidden />Reanudar
+                <Play size={18} aria-hidden />{t('print.resume')}
               </button>
             ) : (
               <button className="btn" disabled={disabled} onClick={onPause}>
-                <Pause size={18} aria-hidden />Pausar
+                <Pause size={18} aria-hidden />{t('print.pause')}
               </button>
             )}
             <button className="btn danger" disabled={disabled} onClick={onStop}>
-              <Square size={16} aria-hidden />Parar
+              <Square size={16} aria-hidden />{t('print.stop')}
             </button>
           </div>
           <ObjectsList />

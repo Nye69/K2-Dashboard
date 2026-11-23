@@ -12,6 +12,11 @@ updates:
       minor-y-parches:
         update-types: [minor, patch]
     labels: [dependencias]
+    ignore:
+      # three.js va fijo a la versión que trae gcode-preview (visor 3D): con dos versiones distintas
+      # los objetos propios (marca del frente) rompen la escena ("material.onBuild is not a function").
+      - dependency-name: three
+      - dependency-name: '@types/three'
 
   # Imágenes base del Dockerfile (node, nginx)
   - package-ecosystem: docker

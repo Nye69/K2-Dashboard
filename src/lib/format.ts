@@ -1,3 +1,5 @@
+import { dateLocale, type Lang } from '../i18n';
+
 export function formatDuration(seconds: number | null | undefined): string {
   if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return '—';
   const s = Math.round(seconds);
@@ -29,14 +31,14 @@ export function parseSlicerTime(text: string): number | undefined {
   return found ? Math.round(total) : undefined;
 }
 
-export function formatClock(epochMs: number): string {
+export function formatClock(epochMs: number, lang: Lang = 'es'): string {
   const d = new Date(epochMs);
   const today = new Date();
-  const time = d.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+  const time = d.toLocaleTimeString(dateLocale(lang), { hour: '2-digit', minute: '2-digit' });
   if (d.toDateString() === today.toDateString()) return time;
-  return `${d.toLocaleDateString('es', { weekday: 'short' })} ${time}`;
+  return `${d.toLocaleDateString(dateLocale(lang), { weekday: 'short' })} ${time}`;
 }
 
-export function formatDate(epochSec: number): string {
-  return new Date(epochSec * 1000).toLocaleDateString('es', { day: 'numeric', month: 'short', year: 'numeric' });
+export function formatDate(epochSec: number, lang: Lang = 'es'): string {
+  return new Date(epochSec * 1000).toLocaleDateString(dateLocale(lang), { day: 'numeric', month: 'short', year: 'numeric' });
 }

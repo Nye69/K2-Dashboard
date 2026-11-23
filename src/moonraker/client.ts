@@ -1,3 +1,4 @@
+import { tNow } from '../i18n';
 export type ConnState = 'connecting' | 'open' | 'closed';
 type Status = Record<string, Record<string, unknown>>;
 
@@ -50,7 +51,7 @@ export class MoonrakerClient {
     };
     ws.onmessage = (ev) => this.onMessage(ev.data);
     ws.onclose = () => {
-      this.failPending('Conexión cerrada');
+      this.failPending(tNow('err.closed'));
       this.setState('closed');
       if (!this.stopped) {
         this.retryTimer = setTimeout(() => this.connect(), this.backoff);
@@ -78,7 +79,7 @@ export class MoonrakerClient {
 
   call<T = unknown>(method: string, params?: object): Promise<T> {
     return new Promise((resolve, reject) => {
-      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return reject(new Error('Sin conexión'));
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return reject(new Error(tNow('err.offline')));
       const id = this.nextId++;
       this.pending.set(id, { resolve, reject });
       this.ws.send(JSON.stringify({ jsonrpc: '2.0', method, params, id }));
@@ -118,7 +119,7 @@ export class MoonrakerClient {
     if (msg.id !== undefined && this.pending.has(msg.id)) {
       const p = this.pending.get(msg.id)!;
       this.pending.delete(msg.id);
-      if (msg.error) p.reject(new Error(msg.error.message ?? 'Error de Moonraker'));
+      if (msg.error) p.reject(new Error(msg.error.message ?? tNow('err.moonraker')));
       else p.resolve(msg.result);
       return;
     }

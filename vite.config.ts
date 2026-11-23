@@ -16,7 +16,7 @@ export default defineConfig({
       '/websocket': { target: K2, ws: true, changeOrigin: false },
       '/k2ws': { target: K2.replace(/:\d+$/, ':9999'), ws: true, changeOrigin: true, rewrite: () => '/' },
       '^/(server|printer|machine|access|api)/': { target: K2, changeOrigin: false },
-      '^/(auth/|login$|setup$)': { target: SERVER, changeOrigin: false },
+      '^/(auth/|login(\\?|$)|setup(\\?|$))': { target: SERVER, changeOrigin: false },
     },
   },
 });

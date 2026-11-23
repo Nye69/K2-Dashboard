@@ -1,4 +1,5 @@
 import type { TempSample } from '../moonraker/usePrinter';
+import { useT } from '../i18n';
 
 const W = 600;
 const H = 140;
@@ -6,8 +7,9 @@ const PAD = { l: 34, r: 8, t: 8, b: 18 };
 const WINDOW_MS = 10 * 60_000;
 
 export function TempChart({ history }: { history: TempSample[] }) {
+  const t = useT();
   if (history.length < 2) {
-    return <div className="chart empty" style={{ padding: 12 }}>Recogiendo datos de temperatura…</div>;
+    return <div className="chart empty" style={{ padding: 12 }}>{t('chart.collecting')}</div>;
   }
   const end = history[history.length - 1].t;
   const start = end - WINDOW_MS;
@@ -25,7 +27,7 @@ export function TempChart({ history }: { history: TempSample[] }) {
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="none"
         role="img"
-        aria-label={`Últimos 10 minutos. Boquilla ${last.nozzle.toFixed(0)} grados, cama ${last.bed.toFixed(0)} grados.`}
+        aria-label={t('chart.aria', { nozzle: last.nozzle.toFixed(0), bed: last.bed.toFixed(0) })}
       >
         {ticks.map((v) => (
           <g key={v}>
@@ -34,16 +36,16 @@ export function TempChart({ history }: { history: TempSample[] }) {
           </g>
         ))}
         <text x={PAD.l} y={H - 4} fontSize={11} fill="#8a8a8a">-10 min</text>
-        <text x={W - PAD.r} y={H - 4} fontSize={11} fill="#8a8a8a" textAnchor="end">ahora</text>
+        <text x={W - PAD.r} y={H - 4} fontSize={11} fill="#8a8a8a" textAnchor="end">{t('chart.now')}</text>
         <polyline points={line('nozzleTarget')} fill="none" stroke="var(--nozzle)" strokeOpacity={0.5} strokeDasharray="5 4" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
         <polyline points={line('bedTarget')} fill="none" stroke="var(--bed)" strokeOpacity={0.5} strokeDasharray="5 4" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
         <polyline points={line('nozzle')} fill="none" stroke="var(--nozzle)" strokeWidth={2.5} vectorEffect="non-scaling-stroke" />
         <polyline points={line('bed')} fill="none" stroke="var(--bed)" strokeWidth={2.5} vectorEffect="non-scaling-stroke" />
       </svg>
       <div className="legend">
-        <span><i style={{ background: 'var(--nozzle)' }} />Boquilla</span>
-        <span><i style={{ background: 'var(--bed)' }} />Cama</span>
-        <span style={{ color: 'var(--text-3)' }}><i className="dash" />Objetivo</span>
+        <span><i style={{ background: 'var(--nozzle)' }} />{t('temps.nozzle')}</span>
+        <span><i style={{ background: 'var(--bed)' }} />{t('temps.bed')}</span>
+        <span style={{ color: 'var(--text-3)' }}><i className="dash" />{t('chart.target')}</span>
       </div>
     </div>
   );

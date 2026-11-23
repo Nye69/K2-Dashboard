@@ -12,6 +12,7 @@ import { TopBar } from './components/TopBar';
 import { useInView } from './lib/useInView';
 import { getSettings } from './settings/api';
 import { PrinterContext, usePrinterConnection } from './moonraker/usePrinter';
+import { useT } from './i18n';
 
 // three.js pesa; se carga aparte para que el panel aparezca antes en el móvil.
 const GcodeViewer = lazy(() => import('./components/GcodeViewer').then((m) => ({ default: m.GcodeViewer })));
@@ -26,6 +27,7 @@ function ViewerPlaceholder() {
 
 export default function App() {
   const printer = usePrinterConnection();
+  const t = useT();
   const printing: string = printer.status.print_stats?.filename ?? '';
   const [viewerPath, setViewerPath] = useState<string | null>(null);
   // El código del visor 3D (three.js) solo se descarga cuando el visor aparece en pantalla.
@@ -61,9 +63,9 @@ export default function App() {
           <TopBar name={printerName} onSettings={() => setSettingsOpen(true)} />
           {printerHost === '' && (
             <div className="alert warn setup-banner" role="status">
-              <span>Falta poner la IP de la impresora para conectarse.</span>
+              <span>{t('app.missingHost')}</span>
               <button className="btn" onClick={() => setSettingsOpen(true)}>
-                <SettingsIcon size={16} aria-hidden />Abrir ajustes
+                <SettingsIcon size={16} aria-hidden />{t('app.openSettings')}
               </button>
             </div>
           )}

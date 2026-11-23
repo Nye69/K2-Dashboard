@@ -1,5 +1,6 @@
 import { parseGcodeFooter, parseGcodeHeader } from '../lib/gcodeInfo';
 import { infoFromMetadata, needsFileScan, type FileInfo } from '../lib/metadata';
+import { tNow } from '../i18n';
 
 export type { FileInfo };
 
@@ -75,7 +76,7 @@ export function uploadFile(file: File, onProgress: (fraction: number) => void): 
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) return resolve();
-      if (xhr.status === 413) return reject(new Error('El archivo es demasiado grande para el servidor (413)'));
+      if (xhr.status === 413) return reject(new Error(tNow('err.tooBig')));
       let msg = `Error ${xhr.status}`;
       try {
         msg = JSON.parse(xhr.responseText)?.error?.message ?? msg;
@@ -84,7 +85,7 @@ export function uploadFile(file: File, onProgress: (fraction: number) => void): 
       }
       reject(new Error(msg));
     };
-    xhr.onerror = () => reject(new Error('Error de red al subir'));
+    xhr.onerror = () => reject(new Error(tNow('err.uploadNetwork')));
     const form = new FormData();
     form.append('root', 'gcodes');
     form.append('file', file, file.name);
@@ -100,7 +101,7 @@ export async function fetchRange(path: string, range: string): Promise<string> {
 
 export async function fetchWholeFile(path: string, onProgress?: (fraction: number) => void, sizeHint = 0): Promise<string> {
   const res = await fetch(`/server/files/gcodes/${enc(path)}`);
-  if (!res.ok || !res.body) throw new Error(`No se pudo descargar (${res.status})`);
+  if (!res.ok || !res.body) throw new Error(tNow('err.download', { status: res.status }));
   // Con gzip no llega Content-Length: se usa el tamaño real del archivo para la barra de progreso.
   const total = sizeHint || Number(res.headers.get('content-length')) || 0;
   const reader = res.body.getReader();

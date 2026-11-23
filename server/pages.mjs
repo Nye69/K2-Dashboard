@@ -1,5 +1,7 @@
 // Páginas que sirve el propio servidor (sin React): inicio de sesión y configuración inicial.
 
+import { t } from './lib/i18n.mjs';
+
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 const EYE_ON =
@@ -7,11 +9,11 @@ const EYE_ON =
 const EYE_OFF =
   '<svg class="off" hidden width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>';
 
-const passwordField = (name, label, autocomplete, error) => `
+const passwordField = (name, label, autocomplete, error, lang) => `
   <label>${label}
     <span class="pw">
       <input name="${name}" type="password" autocomplete="${autocomplete}" required ${error ? 'aria-invalid="true"' : ''}>
-      <button type="button" class="eye" aria-label="Mostrar contraseña" aria-pressed="false" title="Mostrar contraseña">${EYE_ON}${EYE_OFF}</button>
+      <button type="button" class="eye" aria-label="${t(lang, 'pw.show')}" aria-pressed="false" title="${t(lang, 'pw.show')}">${EYE_ON}${EYE_OFF}</button>
     </span>
     ${error ? `<span class="field-err">${esc(error)}</span>` : ''}
   </label>`;
@@ -22,11 +24,11 @@ const textField = (name, label, value, error, extra = '') => `
     ${error ? `<span class="field-err">${esc(error)}</span>` : ''}
   </label>`;
 
-function shell({ title, iconDataUri, body, appTitle = 'K2' }) {
+function shell({ title, iconDataUri, body, appTitle = 'K2', lang = 'es' }) {
   // iOS 27 no carga el icono desde una URL al añadir a la pantalla de inicio (sale una letra): va incrustado.
   const touchIcon = iconDataUri ? `<link rel="apple-touch-icon" sizes="180x180" href="${iconDataUri}">` : '<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">';
   return `<!doctype html>
-<html lang="es"><head><meta charset="utf-8">
+<html lang="${lang}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#121212">
 <link rel="manifest" href="/manifest.webmanifest">
@@ -59,17 +61,20 @@ ${touchIcon}
   .err { background: #2a1012; border: 1px solid #5f1d22; color: #fca5a5; border-radius: 10px; padding: 10px 12px; font-size: 14px; }
   .info { background: #262626; border: 1px solid #3a3a3a; color: #e5e5e5; border-radius: 10px; padding: 10px 12px; font-size: 14px; }
   .field-err { color: #fca5a5; font-size: 13px; }
+  .lang { justify-self: center; color: #b3b3b3; font-size: 14px; padding: 10px; min-height: 44px; display: inline-flex; align-items: center; }
+  .lang:hover { color: #f5f5f5; }
 </style></head>
 <body>
 ${body}
 <script>
+  const PW = ${JSON.stringify({ show: t(lang, 'pw.show'), hide: t(lang, 'pw.hide') })};
   document.querySelectorAll('.eye').forEach((eye) => {
     const pw = eye.parentElement.querySelector('input');
     eye.addEventListener('click', () => {
       const show = pw.type === 'password';
       pw.type = show ? 'text' : 'password';
       eye.setAttribute('aria-pressed', String(show));
-      eye.setAttribute('aria-label', show ? 'Ocultar contraseña' : 'Mostrar contraseña');
+      eye.setAttribute('aria-label', show ? PW.hide : PW.show);
       eye.title = eye.getAttribute('aria-label');
       eye.querySelector('.on').hidden = show;
       eye.querySelector('.off').hidden = !show;
@@ -85,36 +90,42 @@ ${body}
 </body></html>`;
 }
 
-export function loginPage({ error = '', notice = '', iconDataUri, firstRun = false, name = 'K2' } = {}) {
+const langLink = (lang, path) => `<a class="lang" href="${path}?lang=${t(lang, 'lang.switchTo')}" lang="${t(lang, 'lang.switchTo')}">${t(lang, 'lang.switch')}</a>`;
+
+export function loginPage({ error = '', notice = '', iconDataUri, firstRun = false, name = 'K2', lang = 'es' } = {}) {
   return shell({
-    title: `${name} · Entrar`,
+    title: `${name} · ${t(lang, 'login.title')}`,
     appTitle: name,
     iconDataUri,
+    lang,
     body: `<form method="post" action="/auth/login">
   <div class="brand"><img src="/icons/icon-192.png" alt="">${esc(name)}</div>
-  ${firstRun ? '<div class="info">Primer arranque: entra con <b>admin</b> / <b>changeme</b> desde tu red local. Después te pedirá un usuario y una contraseña nuevos.</div>' : ''}
+  ${firstRun ? `<div class="info">${t(lang, 'login.firstRun')}</div>` : ''}
   ${notice ? `<div class="info" role="status">${esc(notice)}</div>` : ''}
   ${error ? `<div class="err" role="alert">${esc(error)}</div>` : ''}
-  ${textField('user', 'Usuario', '', '', 'autofocus')}
-  ${passwordField('password', 'Contraseña', 'current-password')}
-  <button type="submit">Entrar</button>
+  ${textField('user', t(lang, 'login.user'), '', '', 'autofocus')}
+  ${passwordField('password', t(lang, 'login.password'), 'current-password', '', lang)}
+  <button type="submit">${t(lang, 'login.submit')}</button>
+  ${langLink(lang, '/login')}
 </form>`,
   });
 }
 
-export function setupPage({ errors = {}, user = '', iconDataUri, name = 'K2' } = {}) {
+export function setupPage({ errors = {}, user = '', iconDataUri, name = 'K2', lang = 'es' } = {}) {
   return shell({
-    title: `${name} · Crear administrador`,
+    title: `${name} · ${t(lang, 'setup.title')}`,
     appTitle: name,
     iconDataUri,
+    lang,
     body: `<form method="post" action="/auth/setup">
-  <div class="brand"><img src="/icons/icon-192.png" alt="">Crea tu usuario</div>
-  <p>La cuenta de fábrica (admin / changeme) deja de funcionar en cuanto guardes. Este usuario será el administrador.</p>
+  <div class="brand"><img src="/icons/icon-192.png" alt="">${t(lang, 'setup.heading')}</div>
+  <p>${t(lang, 'setup.intro')}</p>
   ${errors.general ? `<div class="err" role="alert">${esc(errors.general)}</div>` : ''}
-  ${textField('user', 'Usuario nuevo', user, errors.user, 'autofocus')}
-  ${passwordField('password', 'Contraseña nueva (mínimo 10 caracteres)', 'new-password', errors.password)}
-  ${passwordField('confirm', 'Repite la contraseña', 'new-password', errors.confirm)}
-  <button type="submit">Guardar y entrar</button>
+  ${textField('user', t(lang, 'setup.user'), user, errors.user, 'autofocus')}
+  ${passwordField('password', t(lang, 'setup.password'), 'new-password', errors.password, lang)}
+  ${passwordField('confirm', t(lang, 'setup.confirm'), 'new-password', errors.confirm, lang)}
+  <button type="submit">${t(lang, 'setup.submit')}</button>
+  ${langLink(lang, '/setup')}
 </form>`,
   });
 }

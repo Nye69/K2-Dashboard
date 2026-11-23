@@ -15,6 +15,7 @@ Va en **un solo contenedor Docker**: nginx sirve la app y hace de proxy hacia la
 - **Notificaciones push** al móvil y al ordenador cuando una impresión empieza, termina, falla, se pausa o se acaba el filamento. Las manda la propia app, sin servicios ni apps extra.
 - **Inicio de sesión propio** (funciona bien en iPhone, también con websockets) y **app instalable** (PWA).
 - **Ajustes desde la app**: IP de la impresora, dominio, proxy de confianza, avisos y cuenta.
+- **Español e inglés** (English): cada dispositivo elige su idioma en Ajustes, y también en la pantalla de inicio de sesión.
 
 ## Puesta en marcha rápida
 

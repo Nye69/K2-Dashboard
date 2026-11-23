@@ -1,17 +1,18 @@
 import * as GCodePreview from 'gcode-preview';
 import { Box, LoaderCircle, RotateCcw } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { Box3, Color, Vector3, type Object3D } from 'three';
+import { Box3, BufferGeometry, CanvasTexture, Color, DoubleSide, Group, Line, LineBasicMaterial, Mesh, MeshBasicMaterial, PlaneGeometry, Vector3, type Object3D } from 'three';
+import { bedFromGcode, K2_SE_BED, type Bed } from '../lib/bed';
 import { formatBytes } from '../lib/format';
 import { printedLayerIndex } from '../lib/layers';
 import { layerAtFilePosition, lineByteOffsets } from '../lib/filePosition';
 import { fetchWholeFile, fileMetadata } from '../moonraker/api';
 import { useInView } from '../lib/useInView';
 import { usePrinter } from '../moonraker/usePrinter';
+import { useT } from '../i18n';
 
 /** Por debajo de este tamaño la vista se carga sola; por encima, el usuario pulsa "Cargar vista". */
 const AUTOLOAD_BYTES = 8 * 1024 * 1024;
-const BUILD = { x: 260, y: 260, z: 260 };
 
 /** Hasta este tamaño de G-code se dibuja con tubos iluminados; más grande, con líneas (más ligero). */
 const tubesLimit = () => (window.matchMedia('(pointer: coarse)').matches ? 4 : 10) * 1024 * 1024;
@@ -61,18 +62,63 @@ function toneDownLines(v: GCodePreview.WebGLPreview) {
   });
 }
 
-/** Dibuja y, si son líneas, baja el brillo. */
-function draw(v: GCodePreview.WebGLPreview) {
+/**
+ * Marca del frente de la cama: el borde delantero en verde y el texto "FRENTE" en el suelo, delante.
+ * En el G-code de la K2 el frente es Y = 0 (ahí va la línea de purga); la librería lo dibuja hacia la cámara.
+ */
+function makeFrontMarker(bed: Bed, label: string): { group: Group; dispose: () => void } {
+  const group = new Group();
+  const lineGeo = new BufferGeometry().setFromPoints([new Vector3(-bed.x / 2, 0.3, bed.y / 2), new Vector3(bed.x / 2, 0.3, bed.y / 2)]);
+  const lineMat = new LineBasicMaterial({ color: '#22c55e' });
+  group.add(new Line(lineGeo, lineMat));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 96;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#22c55e';
+  ctx.font = '600 64px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label.toUpperCase(), 256, 50);
+  const tex = new CanvasTexture(canvas);
+  const textW = Math.min(70, bed.x * 0.4);
+  const textGeo = new PlaneGeometry(textW, (textW * 96) / 512);
+  const textMat = new MeshBasicMaterial({ map: tex, transparent: true, side: DoubleSide, depthWrite: false });
+  const text = new Mesh(textGeo, textMat);
+  text.rotation.x = -Math.PI / 2; // tumbado en el suelo, legible desde delante
+  text.position.set(0, 0.2, bed.y / 2 + 10);
+  group.add(text);
+
+  return {
+    group,
+    dispose: () => {
+      lineGeo.dispose();
+      lineMat.dispose();
+      textGeo.dispose();
+      textMat.dispose();
+      tex.dispose();
+    },
+  };
+}
+
+/**
+ * Dibuja y, si son líneas, baja el brillo. La librería pone el (0,0) del G-code en la esquina delantera izquierda
+ * de la cama; si el área imprimible empieza en otro punto, se desplaza el modelo. Después se añade la marca del frente.
+ */
+function draw(v: GCodePreview.WebGLPreview, bed: Bed, front: Group | null) {
   v.render();
-  if (!v.renderTubes) {
-    toneDownLines(v);
-    v.renderer.render(v.scene, v.camera);
-  }
+  const group = (v as unknown as { group?: Object3D }).group;
+  if (group && (bed.minX || bed.minY)) group.position.set(-bed.x / 2 - bed.minX, 0, bed.y / 2 + bed.minY);
+  if (front) v.scene.add(front);
+  if (!v.renderTubes) toneDownLines(v);
+  v.renderer.render(v.scene, v.camera);
 }
 
 type Phase = { kind: 'idle' } | { kind: 'ask'; size: number } | { kind: 'loading'; progress: number } | { kind: 'ready' } | { kind: 'error'; message: string };
 
 export function GcodeViewer({ path }: { path: string | null }) {
+  const t = useT();
   const { status } = usePrinter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -88,6 +134,18 @@ export function GcodeViewer({ path }: { path: string | null }) {
   // Por defecto se ve el modelo entero; "solo lo impreso" es opcional (al principio de una impresión casi no se ve nada).
   const [follow, setFollow] = useState(false);
   const [simplified, setSimplified] = useState(false);
+  // Cama del archivo cargado (la del slicer si viene en el G-code) y la marca del frente para esa cama.
+  const bedRef = useRef<Bed>(K2_SE_BED);
+  const frontRef = useRef<{ key: string; group: Group; dispose: () => void } | null>(null);
+  const frontLabel = t('viewer.front');
+  const frontFor = (bed: Bed) => {
+    const key = `${bed.x}x${bed.y}:${frontLabel}`;
+    if (frontRef.current?.key !== key) {
+      frontRef.current?.dispose();
+      frontRef.current = { key, ...makeFrontMarker(bed, frontLabel) };
+    }
+    return frontRef.current.group;
+  };
 
   const printingThis = status.print_stats?.filename === path && ['printing', 'paused'].includes(status.print_stats?.state);
   // Capa del visor que se está imprimiendo: por la posición en el archivo si se sabe (exacto), si no por proporción.
@@ -104,7 +162,7 @@ export function GcodeViewer({ path }: { path: string | null }) {
     if (!canvasRef.current) return;
     const p = GCodePreview.init({
       canvas: canvasRef.current,
-      buildVolume: BUILD,
+      buildVolume: { x: K2_SE_BED.x, y: K2_SE_BED.y, z: K2_SE_BED.z },
       backgroundColor: '#161616',
       extrusionColor: '#22c55e',
       extrusionWidth: 0.45,
@@ -120,6 +178,8 @@ export function GcodeViewer({ path }: { path: string | null }) {
       ro.disconnect();
       p.dispose();
       preview.current = null;
+      frontRef.current?.dispose();
+      frontRef.current = null;
     };
   }, []);
 
@@ -137,6 +197,9 @@ export function GcodeViewer({ path }: { path: string | null }) {
       // Los tubos pesan el doble: en archivos muy grandes (y antes en el móvil) se usan líneas.
       v.renderTubes = text.length <= tubesLimit();
       setSimplified(!v.renderTubes);
+      const bed = bedFromGcode(text);
+      bedRef.current = bed;
+      v.buildVolume = { x: bed.x, y: bed.y, z: bed.z };
       v.processGCode(text);
       offsetsRef.current = lineByteOffsets(text);
       layerStartsRef.current = v.layers.map((l) => l.lineNumber);
@@ -144,7 +207,7 @@ export function GcodeViewer({ path }: { path: string | null }) {
       setMaxLayer(max);
       setLayer(max);
       setFollow(false);
-      draw(v);
+      draw(v, bed, frontFor(bed));
       frameModel(v);
       setPhase({ kind: 'ready' });
     } catch (e) {
@@ -179,10 +242,10 @@ export function GcodeViewer({ path }: { path: string | null }) {
     if (!v || phase.kind !== 'ready') return;
     const t = setTimeout(() => {
       v.endLayer = shownLayer + 1;
-      draw(v);
+      draw(v, bedRef.current, frontFor(bedRef.current));
     }, 80);
     return () => clearTimeout(t);
-  }, [shownLayer, phase.kind]);
+  }, [shownLayer, phase.kind, frontLabel]);
 
   const resetCamera = () => {
     if (preview.current) frameModel(preview.current);
@@ -192,35 +255,35 @@ export function GcodeViewer({ path }: { path: string | null }) {
     <section ref={inViewRef} className="card viewer" aria-labelledby="viewer-title">
       <div className="card-head">
         <Box size={18} aria-hidden color="var(--text-2)" />
-        <h2 id="viewer-title">Vista del G-code</h2>
+        <h2 id="viewer-title">{t('viewer.title')}</h2>
         <div className="spacer" />
         {path && <span className="viewer-name" title={path}>{path}</span>}
-        <button className="icon-btn" onClick={resetCamera} aria-label="Centrar la cámara" title="Centrar la cámara" disabled={phase.kind !== 'ready'}>
+        <button className="icon-btn" onClick={resetCamera} aria-label={t('viewer.center')} title={t('viewer.center')} disabled={phase.kind !== 'ready'}>
           <RotateCcw size={18} />
         </button>
       </div>
 
       <div className="viewer-stage" ref={stageRef}>
-        <canvas ref={canvasRef} aria-label="Vista 3D del G-code. Arrastra para girar, pellizca o usa la rueda para hacer zoom." />
+        <canvas ref={canvasRef} aria-label={t('viewer.canvas')} />
         {phase.kind !== 'ready' && (
           <div className="viewer-empty">
-            {phase.kind === 'idle' && <div><Box size={32} aria-hidden />{path ? 'Cargando vista…' : 'Pulsa el ojo de un archivo para verlo en 3D.'}</div>}
+            {phase.kind === 'idle' && <div><Box size={32} aria-hidden />{path ? t('viewer.loadingView') : t('viewer.pickFile')}</div>}
             {phase.kind === 'ask' && (
               <div>
-                Este archivo pesa {formatBytes(phase.size)}.
-                <button className="btn primary" onClick={() => path && load(path)}>Cargar vista</button>
+                {t('viewer.size', { size: formatBytes(phase.size) })}
+                <button className="btn primary" onClick={() => path && load(path)}>{t('viewer.load')}</button>
               </div>
             )}
             {phase.kind === 'loading' && (
               <div>
                 <LoaderCircle size={28} className="spin" aria-hidden />
-                Cargando… {Math.round(phase.progress * 100)}%
+                {t('viewer.loading', { pct: Math.round(phase.progress * 100) })}
               </div>
             )}
             {phase.kind === 'error' && (
               <div>
-                No se pudo cargar: {phase.message}
-                <button className="btn" onClick={() => path && load(path)}>Reintentar</button>
+                {t('viewer.error', { error: phase.message })}
+                <button className="btn" onClick={() => path && load(path)}>{t('viewer.retry')}</button>
               </div>
             )}
           </div>
@@ -230,7 +293,7 @@ export function GcodeViewer({ path }: { path: string | null }) {
       {phase.kind === 'ready' && maxLayer > 0 && (
         <div className="viewer-controls">
           <label htmlFor="layer" className="num" style={{ fontSize: 14, color: 'var(--text-2)', minWidth: 96 }}>
-            Capa {shownLayer + 1} / {maxLayer + 1}
+            {t('viewer.layer', { n: shownLayer + 1, total: maxLayer + 1 })}
           </label>
           <input
             id="layer"
@@ -246,16 +309,16 @@ export function GcodeViewer({ path }: { path: string | null }) {
           {printingThis && (
             <label className="toggle">
               <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} />
-              Solo lo impreso
+              {t('viewer.onlyPrinted')}
             </label>
           )}
         </div>
       )}
-      {phase.kind === 'ready' && simplified && <div className="viewer-note">Vista simplificada por el tamaño del archivo.</div>}
+      {phase.kind === 'ready' && simplified && <div className="viewer-note">{t('viewer.simplified')}</div>}
       {phase.kind === 'ready' && printedLayer != null && (
         <div className="viewer-printing">
-          Imprimiendo este archivo
-          {status.virtual_sdcard?.layer_count ? ` · capa ${status.virtual_sdcard.layer} de ${status.virtual_sdcard.layer_count}` : ''}
+          {t('viewer.printingThis')}
+          {status.virtual_sdcard?.layer_count ? t('viewer.printingLayer', { n: status.virtual_sdcard.layer, total: status.virtual_sdcard.layer_count }) : ''}
         </div>
       )}
     </section>

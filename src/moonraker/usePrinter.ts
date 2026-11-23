@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import { computeAlerts, TEMP_TOLERANCE_C, type Alert } from '../lib/alerts';
 import { checkSession } from './api';
 import { MoonrakerClient, type ConnState } from './client';
+import { useT } from '../i18n';
 
 export const SENSORS = ['filament_switch_sensor filament_sensor', 'filament_switch_sensor filament_sensor_2'] as const;
 
@@ -54,6 +55,7 @@ function merge(prev: RawStatus, patch: RawStatus): RawStatus {
 }
 
 export function usePrinterConnection(): PrinterState {
+  const tr = useT();
   const client = useMemo(() => new MoonrakerClient(OBJECTS), []);
   const [conn, setConn] = useState<ConnState>('connecting');
   const [status, setStatus] = useState<RawStatus>({});
@@ -121,13 +123,13 @@ export function usePrinterConnection(): PrinterState {
         printMessage: status.print_stats?.message ?? '',
         pausedByUser,
         filamentSensors: SENSORS.filter((k) => status[k]).map((k, i) => ({
-          name: i === 0 ? 'Sensor de filamento' : 'Sensor de filamento 2',
+          name: tr(i === 0 ? 'sensor.filament' : 'sensor.filament2'),
           detected: !!status[k].filament_detected,
           enabled: !!status[k].enabled,
         })),
         heaters: [
-          { key: 'extruder', name: 'Boquilla' },
-          { key: 'heater_bed', name: 'Cama' },
+          { key: 'extruder', name: tr('temps.nozzle') },
+          { key: 'heater_bed', name: tr('temps.bed') },
         ]
           .filter((h) => status[h.key])
           .map((h) => ({
@@ -137,8 +139,8 @@ export function usePrinterConnection(): PrinterState {
             offSinceMs: offSince.current[h.key] ?? null,
           })),
         now,
-      }),
-    [conn, status, printState, pausedByUser, now],
+      }, tr),
+    [conn, status, printState, pausedByUser, now, tr],
   );
 
   return { conn, status, history, alerts, markUserPause: () => setPausedByUser(true), client };

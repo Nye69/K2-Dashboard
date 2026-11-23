@@ -1,3 +1,5 @@
+import { tFor, type T } from '../i18n';
+
 // Reglas para cambiar el nombre de un archivo de la impresora.
 
 const EXT = /\.(gcode|g|gco)$/i;
@@ -15,18 +17,18 @@ export function splitName(path: string) {
  * Nueva ruta a partir de lo que escribe el usuario. Conserva la carpeta y la extensión
  * (si no la escribe, se añade la que tenía). Devuelve { path } o { error }.
  */
-export function renameTarget(oldPath: string, input: string, existing: string[] = []): { path: string } | { error: string } {
+export function renameTarget(oldPath: string, input: string, existing: string[] = [], t: T = tFor('es')): { path: string } | { error: string } {
   const { dir, ext } = splitName(oldPath);
   let name = input.trim().replace(/\s+/g, ' ');
-  if (!name) return { error: 'Escribe un nombre.' };
-  if (/[/\\]/.test(name)) return { error: 'El nombre no puede llevar / ni \\.' };
-  if (name.startsWith('.')) return { error: 'El nombre no puede empezar por un punto.' };
-  if (/[<>:"|?*\u0000-\u001f]/.test(name)) return { error: 'Quita los caracteres < > : " | ? *' };
+  if (!name) return { error: t('rename.empty') };
+  if (/[/\\]/.test(name)) return { error: t('rename.slash') };
+  if (name.startsWith('.')) return { error: t('rename.dot') };
+  if (/[<>:"|?*\u0000-\u001f]/.test(name)) return { error: t('rename.chars') };
   if (!EXT.test(name)) name += ext || '.gcode';
-  if (name.length > 150) return { error: 'Nombre demasiado largo (máximo 150 caracteres).' };
+  if (name.length > 150) return { error: t('rename.long') };
   const path = dir + name;
-  if (path === oldPath) return { error: 'Es el mismo nombre.' };
+  if (path === oldPath) return { error: t('rename.same') };
   // Moonraker distingue mayúsculas, pero en la pantalla de la impresora se confunden: se trata como repetido.
-  if (existing.some((p) => p.toLowerCase() === path.toLowerCase() && p !== oldPath)) return { error: 'Ya hay un archivo con ese nombre.' };
+  if (existing.some((p) => p.toLowerCase() === path.toLowerCase() && p !== oldPath)) return { error: t('rename.exists') };
   return { path };
 }

@@ -8,6 +8,7 @@ import { runGcode, setTemp } from '../moonraker/api';
 
 import { usePrinter } from '../moonraker/usePrinter';
 import { useConfirm } from './ConfirmDialog';
+import { useT } from '../i18n';
 
 const AMOUNTS = [5, 10, 25, 50];
 
@@ -21,6 +22,7 @@ const PRESETS = [
 export function ControlCard() {
   const { conn, status } = usePrinter();
   const confirm = useConfirm();
+  const t = useT();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -55,7 +57,7 @@ export function ControlCard() {
     try {
       await (typeof script === 'string' ? runGcode(script) : script());
     } catch (e) {
-      if (longRunning && isCutByProxy(e)) setNotice('La conexión se cortó, pero la impresora sigue con la orden. Mira la boquilla.');
+      if (longRunning && isCutByProxy(e)) setNotice(t('control.connectionCut'));
       else setError((e as Error).message);
     } finally {
       setBusy(null);
@@ -64,9 +66,9 @@ export function ControlCard() {
 
   const calibrate = async () => {
     const ok = await confirm({
-      title: '¿Calibrar la cama?',
-      message: 'La cama tiene que estar vacía. La impresora la calienta, limpia la boquilla y mide 49 puntos. Tarda unos minutos.',
-      confirmLabel: 'Calibrar',
+      title: t('control.calibrateTitle'),
+      message: t('control.calibrateMessage'),
+      confirmLabel: t('control.calibrateConfirm'),
     });
     if (ok) run('calib', CALIBRATE_GCODE);
   };
@@ -76,11 +78,9 @@ export function ControlCard() {
 
   const filament = async (load: boolean) => {
     const ok = await confirm({
-      title: load ? '¿Meter filamento?' : '¿Sacar filamento?',
-      message: load
-        ? `Antes, empuja el filamento nuevo por el tubo hasta que no entre más. La impresora calentará la boquilla a ${LOAD_TEMP} °C, esperará ${LOAD_SOAK_S} segundos para que se ablande el color anterior que quedó dentro y después lo meterá. Tarda unos 3 minutos.`
-        : 'La impresora calentará la boquilla, cortará el filamento y lo echará atrás. Cuando termine, tira de él con suavidad para sacarlo.',
-      confirmLabel: load ? 'Meter' : 'Sacar',
+      title: load ? t('control.loadTitle') : t('control.unloadTitle'),
+      message: load ? t('control.loadMessage', { temp: LOAD_TEMP, soak: LOAD_SOAK_S }) : t('control.unloadMessage'),
+      confirmLabel: load ? t('control.loadConfirm') : t('control.unloadConfirm'),
     });
     if (!ok) return;
     if (load) {
@@ -96,7 +96,7 @@ export function ControlCard() {
     <section className="card" aria-labelledby="control-title">
       <div className="card-head">
         <SlidersHorizontal size={18} aria-hidden color="var(--text-2)" />
-        <h2 id="control-title">Control</h2>
+        <h2 id="control-title">{t('control.title')}</h2>
         <div className="spacer" />
         <button
           className={`btn ${light ? 'go' : ''}`}
@@ -105,12 +105,12 @@ export function ControlCard() {
           onClick={() => run('light', `SET_PIN PIN=LED VALUE=${light ? 0 : 1}`)}
         >
           {light ? <Lightbulb size={18} aria-hidden /> : <LightbulbOff size={18} aria-hidden />}
-          Luz {light ? 'encendida' : 'apagada'}
+          {light ? t('control.lightOn') : t('control.lightOff')}
         </button>
       </div>
 
-      <div className="subhead" style={{ marginTop: 4 }}>Velocidad de impresión</div>
-      <div className="speed-modes" role="radiogroup" aria-label="Velocidad de impresión">
+      <div className="subhead" style={{ marginTop: 4 }}>{t('control.speed')}</div>
+      <div className="speed-modes" role="radiogroup" aria-label={t('control.speed')}>
         {SPEED_MODES.map((m) => {
           const onlyPrinting = m.id === 'silent' && !printing;
           return (
@@ -120,10 +120,10 @@ export function ControlCard() {
               aria-checked={speedMode === m.id}
               className={`speed-mode ${speedMode === m.id ? 'on' : ''}`}
               disabled={offline || onlyPrinting || busy === 'speedmode'}
-              title={onlyPrinting ? 'Solo mientras imprime: baja aceleración, velocidad y ventiladores para hacer menos ruido' : undefined}
+              title={onlyPrinting ? t('control.silentOnlyPrinting') : undefined}
               onClick={() => speedMode !== m.id && run('speedmode', speedModeScript(m.id, qmode))}
             >
-              {m.label}
+              {t(`speed.${m.id}`)}
               {m.pct ? <span className="num"> {m.pct}%</span> : null}
             </button>
           );
@@ -133,7 +133,7 @@ export function ControlCard() {
       <div className="controls">
         <Slider
           icon={<Fan size={16} />}
-          label="Ventilador de capa"
+          label={t('control.fanPart')}
           value={Math.round((status['output_pin fan0']?.value ?? 0) * 100)}
           min={0}
           max={100}
@@ -143,7 +143,7 @@ export function ControlCard() {
         />
         <Slider
           icon={<Fan size={16} />}
-          label="Ventilador auxiliar"
+          label={t('control.fanAux')}
           value={Math.round((status['output_pin fan2']?.value ?? 0) * 100)}
           min={0}
           max={100}
@@ -153,7 +153,7 @@ export function ControlCard() {
         />
         <Slider
           icon={<Gauge size={16} />}
-          label="Velocidad exacta"
+          label={t('control.exactSpeed')}
           value={Math.round((status.gcode_move?.speed_factor ?? 1) * 100)}
           min={10}
           max={300}
@@ -163,7 +163,7 @@ export function ControlCard() {
         />
         <Slider
           icon={<Waves size={16} />}
-          label="Flujo"
+          label={t('control.flow')}
           value={Math.round((status.gcode_move?.extrude_factor ?? 1) * 100)}
           min={50}
           max={150}
@@ -174,16 +174,16 @@ export function ControlCard() {
         />
       </div>
 
-      <div className="subhead">Cambiar filamento</div>
+      <div className="subhead">{t('control.changeFilament')}</div>
       <div className="fil-steps">
         <button className="fil-btn" disabled={offline || printing || !!busy} onClick={() => filament(false)}>
           <span className="fil-num" aria-hidden>1</span>
           <span className="fil-text">
             <span className="fil-title">
               {busy === 'unload' ? <LoaderCircle size={18} className="spin" aria-hidden /> : <ArrowUpFromLine size={18} aria-hidden />}
-              {busy === 'unload' ? 'Sacando…' : 'Sacar filamento'}
+              {busy === 'unload' ? t('control.unloading') : t('control.unload')}
             </span>
-            <span className="fil-desc">Calienta, corta y retrae el viejo. Luego tira de él suave.</span>
+            <span className="fil-desc">{t('control.unloadDesc')}</span>
           </span>
         </button>
         <button className="fil-btn" disabled={offline || printing || !!busy} onClick={() => filament(true)}>
@@ -191,25 +191,23 @@ export function ControlCard() {
           <span className="fil-text">
             <span className="fil-title">
               {busy === 'load' ? <LoaderCircle size={18} className="spin" aria-hidden /> : <ArrowDownToLine size={18} aria-hidden />}
-              <span aria-live="polite">{loading ? loadPhaseLabel(loadPhase(nozzleTemp, reachedAt, now)) : 'Meter filamento'}</span>
+              <span aria-live="polite">{loading ? loadPhaseLabel(loadPhase(nozzleTemp, reachedAt, now), t) : t('control.load')}</span>
             </span>
-            <span className="fil-desc">Empuja el nuevo por el tubo hasta que no entre más y pulsa. Calienta, espera a que se ablande el color anterior y lo mete. Unos 3 minutos.</span>
+            <span className="fil-desc">{t('control.loadDesc')}</span>
           </span>
         </button>
       </div>
-      <div className="hint">
-        No tienes que precalentar: los dos calientan solos. "Meter filamento" además espera {LOAD_SOAK_S} s con la boquilla caliente antes de empujar, así el color nuevo sale a la primera. El Extrude de la pantalla de la impresora empuja sin esperar y puede necesitar varios intentos.
-      </div>
+      <div className="hint">{t('control.filamentHint', { soak: LOAD_SOAK_S })}</div>
       {notice && <div className="alert" style={{ marginTop: 8 }} role="status">{notice}</div>}
 
-      <div className="subhead">Precalentar</div>
-      <div className="presets" role="group" aria-label="Precalentar">
+      <div className="subhead">{t('control.preheat')}</div>
+      <div className="presets" role="group" aria-label={t('control.preheat')}>
         {PRESETS.map((p) => (
           <button
             key={p.name}
             className="btn"
             disabled={offline || printing || busy === p.name}
-            title={`Boquilla ${p.nozzle} °C, cama ${p.bed} °C`}
+            title={t('control.presetTitle', { nozzle: p.nozzle, bed: p.bed })}
             onClick={() => heat(p)}
           >
             <Flame size={16} aria-hidden />
@@ -219,21 +217,19 @@ export function ControlCard() {
         ))}
       </div>
       <button className="btn" style={{ marginTop: 8, width: '100%' }} disabled={offline || printing || busy === 'off'} onClick={() => run('off', () => Promise.all([setTemp('extruder', 0), setTemp('heater_bed', 0)]))}>
-        <Snowflake size={16} aria-hidden />Apagar calor
+        <Snowflake size={16} aria-hidden />{t('control.heatOff')}
       </button>
 
-      <div className="subhead">Calibración</div>
+      <div className="subhead">{t('control.calibration')}</div>
       <button className="btn" style={{ width: '100%' }} disabled={offline || printing || !!busy} onClick={calibrate}>
         {busy === 'calib' ? <LoaderCircle size={16} className="spin" aria-hidden /> : <Crosshair size={16} aria-hidden />}
-        {busy === 'calib' ? 'Calibrando la cama…' : 'Calibrar cama'}
+        {busy === 'calib' ? t('control.calibrating') : t('control.calibrate')}
       </button>
 
       <details className="fine">
-        <summary><ChevronRight size={16} aria-hidden className="fine-chev" />Mover unos milímetros (avanzado)</summary>
-        <p className="hint" style={{ marginTop: 0 }}>
-          Solo mueve el filamento un poco, sin cortar ni calentar. Sirve, por ejemplo, para purgar el color viejo después de meter uno nuevo.
-        </p>
-        <div className="seg" role="radiogroup" aria-label="Cantidad de filamento">
+        <summary><ChevronRight size={16} aria-hidden className="fine-chev" />{t('control.fineMove')}</summary>
+        <p className="hint" style={{ marginTop: 0 }}>{t('control.fineHint')}</p>
+        <div className="seg" role="radiogroup" aria-label={t('control.amount')}>
           {AMOUNTS.map((a) => (
             <button key={a} role="radio" aria-checked={amount === a} className={`seg-btn ${amount === a ? 'on' : ''}`} onClick={() => setAmount(a)}>
               {a} mm
@@ -242,23 +238,23 @@ export function ControlCard() {
         </div>
         {!printing && !canExtrude ? (
           <div className="cold">
-            <span>La boquilla está fría: tiene que pasar de 170 °C.</span>
+            <span>{t('control.cold')}</span>
             <button className="btn" disabled={offline || !!busy} onClick={() => heat(PRESETS[0])}>
-              <Flame size={16} aria-hidden />Calentar (PLA 210 °C)
+              <Flame size={16} aria-hidden />{t('control.heatPla')}
             </button>
           </div>
         ) : (
           <div className="actions" style={{ marginTop: 8 }}>
             <button className="btn" disabled={offline || printing || !canExtrude || !!busy} onClick={() => run('extrude', extrudeScript(amount, 5))}>
-              <ChevronsDown size={18} aria-hidden />Empujar {amount} mm
+              <ChevronsDown size={18} aria-hidden />{t('control.push', { mm: amount })}
             </button>
             <button className="btn" disabled={offline || printing || !canExtrude || !!busy} onClick={() => run('retract', extrudeScript(-amount, 5))}>
-              <ChevronsUp size={18} aria-hidden />Echar atrás {amount} mm
+              <ChevronsUp size={18} aria-hidden />{t('control.pull', { mm: amount })}
             </button>
           </div>
         )}
       </details>
-      {printing && <div className="hint">El filamento y el precalentado no se pueden tocar mientras imprime.</div>}
+      {printing && <div className="hint">{t('control.lockedPrinting')}</div>}
       {error && <div className="alert error" style={{ marginTop: 12 }} role="alert">{error}</div>}
     </section>
   );

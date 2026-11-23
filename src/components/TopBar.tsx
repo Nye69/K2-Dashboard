@@ -1,26 +1,27 @@
 import { LoaderCircle, LogOut, Printer, RotateCw, Settings, Wifi, WifiOff } from 'lucide-react';
 import { usePrinter } from '../moonraker/usePrinter';
+import { useT, type Key } from '../i18n';
 
-const PRINT_LABEL: Record<string, [string, string]> = {
-  printing: ['Imprimiendo', 'ok'],
-  paused: ['Pausada', 'warn'],
-  complete: ['Terminada', 'info'],
-  cancelled: ['Cancelada', 'warn'],
-  error: ['Error', 'err'],
-  standby: ['Lista', 'ok'],
+const PRINT_LABEL: Record<string, [Key, string]> = {
+  printing: ['top.printing', 'ok'],
+  paused: ['top.paused', 'warn'],
+  complete: ['top.complete', 'info'],
+  cancelled: ['top.cancelled', 'warn'],
+  error: ['top.error', 'err'],
+  standby: ['top.ready', 'ok'],
 };
 
 export function TopBar({ onSettings, name }: { onSettings: () => void; name: string }) {
   const { conn, status } = usePrinter();
+  const t = useT();
   const klippy: string = status.webhooks?.state ?? '';
   const print: string = status.print_stats?.state ?? '';
 
   let state: [string, string] = ['—', ''];
   if (conn === 'open') {
-    if (klippy === 'shutdown') state = ['Apagada', 'err'];
-    else if (klippy === 'error') state = ['Error de Klipper', 'err'];
-    else if (klippy === 'startup') state = ['Arrancando', 'info'];
-    else state = PRINT_LABEL[print] ?? ['Lista', 'ok'];
+    const [key, tone]: [Key, string] =
+      klippy === 'shutdown' ? ['top.shutdown', 'err'] : klippy === 'error' ? ['top.klippyError', 'err'] : klippy === 'startup' ? ['top.startup', 'info'] : PRINT_LABEL[print] ?? ['top.ready', 'ok'];
+    state = [t(key), tone];
   }
 
   return (
@@ -34,21 +35,21 @@ export function TopBar({ onSettings, name }: { onSettings: () => void; name: str
         <span className={`pill ${state[1]}`}><span className="dot" />{state[0]}</span>
       )}
       {conn === 'open' ? (
-        <span className="pill ok" title="Conectado a la impresora"><Wifi size={14} aria-hidden /><span className="pill-text">Conectado</span></span>
+        <span className="pill ok" title={t('top.connectedTitle')}><Wifi size={14} aria-hidden /><span className="pill-text">{t('top.connected')}</span></span>
       ) : conn === 'connecting' ? (
-        <span className="pill warn"><LoaderCircle size={14} className="spin" aria-hidden />Conectando…</span>
+        <span className="pill warn"><LoaderCircle size={14} className="spin" aria-hidden />{t('top.connecting')}</span>
       ) : (
-        <span className="pill err"><WifiOff size={14} aria-hidden />Sin conexión</span>
+        <span className="pill err"><WifiOff size={14} aria-hidden />{t('top.offline')}</span>
       )}
       {/* La app instalada en el móvil no tiene botón de recargar: este hace lo mismo. */}
-      <button className="icon-btn" onClick={() => location.reload()} aria-label="Recargar" title="Recargar">
+      <button className="icon-btn" onClick={() => location.reload()} aria-label={t('top.reload')} title={t('top.reload')}>
         <RotateCw size={18} />
       </button>
-      <button className="icon-btn" onClick={onSettings} aria-label="Ajustes" title="Ajustes">
+      <button className="icon-btn" onClick={onSettings} aria-label={t('top.settings')} title={t('top.settings')}>
         <Settings size={18} />
       </button>
       <form method="post" action="/auth/logout">
-        <button className="icon-btn" type="submit" aria-label="Cerrar sesión" title="Cerrar sesión">
+        <button className="icon-btn" type="submit" aria-label={t('top.logout')} title={t('top.logout')}>
           <LogOut size={18} />
         </button>
       </form>
