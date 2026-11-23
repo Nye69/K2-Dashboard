@@ -2,6 +2,7 @@ import { ArrowDownToLine, ArrowUpFromLine, ChevronRight, ChevronsDown, ChevronsU
 import { useEffect, useState } from 'react';
 import { extrudeScript } from '../lib/extrude';
 import { CALIBRATE_GCODE } from '../lib/calibration';
+import { isCutByProxy, LOAD_SOAK_S, LOAD_TEMP, loadFilamentScript, loadPhase, loadPhaseLabel, reachedLoadTemp } from '../lib/filament';
 import { currentSpeedMode, SPEED_MODES, speedModeScript } from '../lib/speedMode';
 import { runGcode, setTemp } from '../moonraker/api';
 
@@ -31,14 +32,31 @@ export function ControlCard() {
   const [amount, setAmount] = useState(10);
   const qmode = Number(status['gcode_macro Qmode']?.flag ?? 0) === 1;
   const speedMode = currentSpeedMode(status.gcode_move?.speed_factor, status['gcode_macro Qmode']?.flag);
+  const [notice, setNotice] = useState('');
 
-  const run = async (key: string, script: string | (() => Promise<unknown>)) => {
+  // Progreso de "Meter filamento": cuándo llegó a la temperatura y un reloj para la cuenta atrás.
+  const nozzleTemp: number | undefined = status.extruder?.temperature;
+  const [reachedAt, setReachedAt] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const loading = busy === 'load';
+  useEffect(() => {
+    if (loading && reachedAt == null && reachedLoadTemp(nozzleTemp)) setReachedAt(Date.now());
+  }, [loading, reachedAt, nozzleTemp]);
+  useEffect(() => {
+    if (!loading) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [loading]);
+
+  const run = async (key: string, script: string | (() => Promise<unknown>), longRunning = false) => {
     setError('');
+    setNotice('');
     setBusy(key);
     try {
       await (typeof script === 'string' ? runGcode(script) : script());
     } catch (e) {
-      setError((e as Error).message);
+      if (longRunning && isCutByProxy(e)) setNotice('La conexión se cortó, pero la impresora sigue con la orden. Mira la boquilla.');
+      else setError((e as Error).message);
     } finally {
       setBusy(null);
     }
@@ -60,11 +78,18 @@ export function ControlCard() {
     const ok = await confirm({
       title: load ? '¿Meter filamento?' : '¿Sacar filamento?',
       message: load
-        ? 'Antes, empuja el filamento nuevo por el tubo hasta que no entre más. La impresora calentará la boquilla y lo meterá hasta que salga por la punta.'
+        ? `Antes, empuja el filamento nuevo por el tubo hasta que no entre más. La impresora calentará la boquilla a ${LOAD_TEMP} °C, esperará ${LOAD_SOAK_S} segundos para que se ablande el color anterior que quedó dentro y después lo meterá. Tarda unos 3 minutos.`
         : 'La impresora calentará la boquilla, cortará el filamento y lo echará atrás. Cuando termine, tira de él con suavidad para sacarlo.',
       confirmLabel: load ? 'Meter' : 'Sacar',
     });
-    if (ok) run(load ? 'load' : 'unload', load ? 'LOAD_MATERIAL' : 'QUIT_MATERIAL');
+    if (!ok) return;
+    if (load) {
+      setReachedAt(null);
+      setNow(Date.now());
+      run('load', loadFilamentScript(), true);
+    } else {
+      run('unload', 'QUIT_MATERIAL');
+    }
   };
 
   return (
@@ -166,13 +191,16 @@ export function ControlCard() {
           <span className="fil-text">
             <span className="fil-title">
               {busy === 'load' ? <LoaderCircle size={18} className="spin" aria-hidden /> : <ArrowDownToLine size={18} aria-hidden />}
-              {busy === 'load' ? 'Metiendo…' : 'Meter filamento'}
+              <span aria-live="polite">{loading ? loadPhaseLabel(loadPhase(nozzleTemp, reachedAt, now)) : 'Meter filamento'}</span>
             </span>
-            <span className="fil-desc">Empuja el nuevo por el tubo hasta que no entre más y pulsa. Calienta y lo mete solo.</span>
+            <span className="fil-desc">Empuja el nuevo por el tubo hasta que no entre más y pulsa. Calienta, espera a que se ablande el color anterior y lo mete. Unos 3 minutos.</span>
           </span>
         </button>
       </div>
-      <div className="hint">Son los mismos que Retract y Extrude de la pantalla de la impresora: calientan la boquilla ellos solos, no tienes que precalentar antes.</div>
+      <div className="hint">
+        No tienes que precalentar: los dos calientan solos. "Meter filamento" además espera {LOAD_SOAK_S} s con la boquilla caliente antes de empujar, así el color nuevo sale a la primera. El Extrude de la pantalla de la impresora empuja sin esperar y puede necesitar varios intentos.
+      </div>
+      {notice && <div className="alert" style={{ marginTop: 8 }} role="status">{notice}</div>}
 
       <div className="subhead">Precalentar</div>
       <div className="presets" role="group" aria-label="Precalentar">
